@@ -669,25 +669,19 @@ public class ViewResourceHandler implements ResourceHandler {
 
     /**
      * Creates a complete resource.json structure for Perspective views.
-     * Scope "G" (Gateway) is used to match Designer-created resources.
+     * Uses scope "A" (All) and empty attributes to match Designer-created resources exactly.
+     *
+     * Note: Designer-created resources have empty attributes {} - we match this pattern
+     * to avoid timestamp parsing issues and ensure compatibility.
      */
     private Map<String, Object> createResourceJson() {
         Map<String, Object> resource = new LinkedHashMap<>();
-        resource.put("scope", "G");  // "G" = Gateway - matches Designer-created resources
+        resource.put("scope", "A");  // "A" = All - matches Designer-created resources
         resource.put("version", 1);
         resource.put("restricted", false);
         resource.put("overridable", true);
         resource.put("files", Collections.singletonList("view.json"));
-
-        // Attributes with lastModification - timestamp must end with "Z" for ISO format
-        Map<String, Object> attributes = new LinkedHashMap<>();
-        Map<String, Object> lastModification = new LinkedHashMap<>();
-        lastModification.put("actor", "llm-gateway");
-        // Truncate to milliseconds - Ignition doesn't support nanosecond precision
-        lastModification.put("timestamp", Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MILLIS).toString());
-        attributes.put("lastModification", lastModification);
-        attributes.put("lastModificationSignature", "");
-        resource.put("attributes", attributes);
+        resource.put("attributes", new LinkedHashMap<>());  // Empty attributes like Designer
 
         return resource;
     }

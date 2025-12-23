@@ -392,24 +392,15 @@ public class NamedQueryResourceHandler implements ResourceHandler {
         Path sqlFile = queryDir.resolve("query.sql");
         Files.writeString(sqlFile, sql, StandardCharsets.UTF_8);
 
-        // Write resource.json (metadata) with proper lastModification
-        // Scope "G" (Gateway) matches Designer-created resources
+        // Write resource.json (metadata) with empty attributes
+        // Scope "A" (All) and empty attributes match Designer-created resources exactly
         Map<String, Object> resourceMeta = new LinkedHashMap<>();
-        resourceMeta.put("scope", "G");  // "G" = Gateway - matches Designer-created resources
+        resourceMeta.put("scope", "A");  // "A" = All - matches Designer-created resources
         resourceMeta.put("version", 1);
         resourceMeta.put("restricted", false);
         resourceMeta.put("overridable", true);
         resourceMeta.put("files", Arrays.asList("query.sql", "query.json"));
-
-        // Add proper attributes with lastModification - timestamp must end with "Z" for ISO format
-        Map<String, Object> attributes = new LinkedHashMap<>();
-        Map<String, Object> lastModification = new LinkedHashMap<>();
-        lastModification.put("actor", "llm-gateway");
-        // Truncate to milliseconds - Ignition doesn't support nanosecond precision
-        lastModification.put("timestamp", Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MILLIS).toString());
-        attributes.put("lastModification", lastModification);
-        attributes.put("lastModificationSignature", "");
-        resourceMeta.put("attributes", attributes);
+        resourceMeta.put("attributes", new LinkedHashMap<>());  // Empty attributes like Designer
 
         // Write query.json (query configuration)
         Map<String, Object> queryConfig = new LinkedHashMap<>();
