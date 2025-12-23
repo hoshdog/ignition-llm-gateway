@@ -42,7 +42,7 @@ Add the MCP server configuration:
       "command": "node",
       "args": ["C:\\path\\to\\ignition-mcp-server\\build\\index.js"],
       "env": {
-        "IGNITION_GATEWAY_URL": "http://localhost:8088",
+        "IGNITION_GATEWAY_URL": "http://localhost:8089",
         "IGNITION_USERNAME": "admin",
         "IGNITION_PASSWORD": "password"
       }

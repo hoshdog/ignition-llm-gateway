@@ -42,7 +42,10 @@
       "Bash(del \"C:\\\\Users\\\\HoshitoPowell\\\\Desktop\\\\Ignition Gateway LLM Module\\\\gateway\\\\src\\\\main\\\\java\\\\com\\\\inductiveautomation\\\\ignition\\\\gateway\\\\llm\\\\gateway\\\\auth\\\\ApiKey.java\")",
       "Bash(del \"C:\\\\Users\\\\HoshitoPowell\\\\Desktop\\\\Ignition Gateway LLM Module\\\\gateway\\\\src\\\\main\\\\java\\\\com\\\\inductiveautomation\\\\ignition\\\\gateway\\\\llm\\\\gateway\\\\auth\\\\ApiKeyManager.java\")",
       "Bash(del \"C:\\\\Users\\\\HoshitoPowell\\\\Desktop\\\\Ignition Gateway LLM Module\\\\gateway\\\\src\\\\main\\\\java\\\\com\\\\inductiveautomation\\\\ignition\\\\gateway\\\\llm\\\\gateway\\\\auth\\\\AuthenticationService.java\")",
-      "Bash(del \"C:\\\\Users\\\\HoshitoPowell\\\\Desktop\\\\Ignition Gateway LLM Module\\\\gateway\\\\src\\\\test\\\\java\\\\com\\\\inductiveautomation\\\\ignition\\\\gateway\\\\llm\\\\gateway\\\\auth\\\\ApiKeyManagerTest.java\")"
+      "Bash(del \"C:\\\\Users\\\\HoshitoPowell\\\\Desktop\\\\Ignition Gateway LLM Module\\\\gateway\\\\src\\\\test\\\\java\\\\com\\\\inductiveautomation\\\\ignition\\\\gateway\\\\llm\\\\gateway\\\\auth\\\\ApiKeyManagerTest.java\")",
+      "Bash(cmd /c copy \"C:\\\\Users\\\\HoshitoPowell\\\\Desktop\\\\Ignition Gateway LLM Module\\\\build\\\\target\\\\LLM-Gateway-unsigned.modl\" \"C:\\\\Program Files\\\\Inductive Automation\\\\Ignition\\\\user-lib\\\\modules\" /Y)",
+      "WebFetch(domain:www.docs.inductiveautomation.com)",
+      "Bash(find:*)"
     ]
   }
 }

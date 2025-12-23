@@ -683,7 +683,8 @@ public class ViewResourceHandler implements ResourceHandler {
         Map<String, Object> attributes = new LinkedHashMap<>();
         Map<String, Object> lastModification = new LinkedHashMap<>();
         lastModification.put("actor", "llm-gateway");
-        lastModification.put("timestamp", Instant.now().toString().replace("+00:00", "Z"));
+        // Truncate to milliseconds - Ignition doesn't support nanosecond precision
+        lastModification.put("timestamp", Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MILLIS).toString());
         attributes.put("lastModification", lastModification);
         attributes.put("lastModificationSignature", "");
         resource.put("attributes", attributes);
