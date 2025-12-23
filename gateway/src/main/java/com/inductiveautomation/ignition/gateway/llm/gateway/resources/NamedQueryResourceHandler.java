@@ -379,6 +379,13 @@ public class NamedQueryResourceHandler implements ResourceHandler {
 
     /**
      * Creates a named query using filesystem access.
+     *
+     * Named queries in Ignition 8.1.6+ use a specific format:
+     * - query.sql: Contains the raw SQL
+     * - resource.json: Contains ALL configuration in the "attributes" section
+     *
+     * Unlike views/scripts, named queries store their type, database, parameters,
+     * and other settings directly in resource.json attributes (no separate query.json).
      */
     private Map<String, Object> createQueryInternal(NamedQueryPath queryPath,
                                                      Map<String, Object> config) throws Exception {
@@ -392,30 +399,56 @@ public class NamedQueryResourceHandler implements ResourceHandler {
         Path sqlFile = queryDir.resolve("query.sql");
         Files.writeString(sqlFile, sql, StandardCharsets.UTF_8);
 
-        // Write resource.json (metadata) with empty attributes
-        // Scope "A" (All) and empty attributes match Designer-created resources exactly
+        // Build attributes map with all query configuration
+        // This matches Designer-created named queries exactly
+        Map<String, Object> attributes = new LinkedHashMap<>();
+
+        // Map queryType to the "type" attribute Ignition expects
+        String queryType = String.valueOf(config.getOrDefault("queryType", "Query"));
+        attributes.put("type", queryType);  // "Query", "UpdateQuery", or "ScalarQuery"
+
+        attributes.put("database", config.getOrDefault("database", ""));
+        attributes.put("enabled", true);
+        attributes.put("cacheEnabled", false);
+        attributes.put("cacheAmount", 1);
+        attributes.put("cacheUnit", "SEC");
+        attributes.put("fallbackEnabled", false);
+        attributes.put("fallbackValue", config.getOrDefault("fallbackValue", ""));
+        attributes.put("useMaxReturnSize", false);
+        attributes.put("maxReturnSize", 100);
+        attributes.put("autoBatchEnabled", false);
+
+        // Add permissions (empty default)
+        List<Map<String, String>> permissions = new ArrayList<>();
+        Map<String, String> defaultPermission = new LinkedHashMap<>();
+        defaultPermission.put("zone", "");
+        defaultPermission.put("role", "");
+        permissions.add(defaultPermission);
+        attributes.put("permissions", permissions);
+
+        // Add lastModification timestamp
+        Map<String, Object> lastMod = new LinkedHashMap<>();
+        lastMod.put("actor", "llm-gateway");
+        lastMod.put("timestamp", Instant.now().toString().substring(0, 19) + "Z");  // ISO format without nanos
+        attributes.put("lastModification", lastMod);
+        attributes.put("lastModificationSignature", "");
+
+        // Write resource.json with full configuration in attributes
+        // Scope "DG" (Designer + Gateway) and version 2 match Designer-created queries
         Map<String, Object> resourceMeta = new LinkedHashMap<>();
-        resourceMeta.put("scope", "A");  // "A" = All - matches Designer-created resources
-        resourceMeta.put("version", 1);
+        resourceMeta.put("scope", "DG");  // "DG" = Designer + Gateway - matches Designer-created queries
+        resourceMeta.put("version", 2);    // Version 2 for named queries
         resourceMeta.put("restricted", false);
         resourceMeta.put("overridable", true);
-        resourceMeta.put("files", Arrays.asList("query.sql", "query.json"));
-        resourceMeta.put("attributes", new LinkedHashMap<>());  // Empty attributes like Designer
-
-        // Write query.json (query configuration)
-        Map<String, Object> queryConfig = new LinkedHashMap<>();
-        queryConfig.put("queryType", config.getOrDefault("queryType", "Select"));
-        queryConfig.put("database", config.getOrDefault("database", ""));
-        queryConfig.put("parameters", config.getOrDefault("parameters", new ArrayList<>()));
-        queryConfig.put("fallbackValue", config.get("fallbackValue"));
+        resourceMeta.put("files", Collections.singletonList("query.sql"));  // Only query.sql, no query.json
+        resourceMeta.put("attributes", attributes);
 
         com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
 
         Path resourceFile = queryDir.resolve("resource.json");
         Files.writeString(resourceFile, mapper.writerWithDefaultPrettyPrinter().writeValueAsString(resourceMeta), StandardCharsets.UTF_8);
 
-        Path configFile = queryDir.resolve("query.json");
-        Files.writeString(configFile, mapper.writerWithDefaultPrettyPrinter().writeValueAsString(queryConfig), StandardCharsets.UTF_8);
+        // NOTE: No query.json file - all config is in resource.json attributes
 
         logger.info("Created named query at: {}", queryDir);
 
@@ -463,13 +496,16 @@ public class NamedQueryResourceHandler implements ResourceHandler {
 
     /**
      * Reads a named query via filesystem.
+     *
+     * Named queries store their configuration in resource.json attributes,
+     * not in a separate query.json file.
      */
     private Map<String, Object> readQueryInternal(NamedQueryPath queryPath) throws Exception {
         logger.debug("Reading named query: {}", queryPath);
 
         Path queryDir = getQueryDirPath(queryPath);
         Path sqlFile = queryDir.resolve("query.sql");
-        Path configFile = queryDir.resolve("query.json");
+        Path resourceFile = queryDir.resolve("resource.json");
 
         if (!Files.exists(sqlFile)) {
             throw new RuntimeException("Named query not found: " + queryPath);
@@ -482,12 +518,45 @@ public class NamedQueryResourceHandler implements ResourceHandler {
         // Read SQL
         result.put("query", Files.readString(sqlFile, StandardCharsets.UTF_8));
 
-        // Read config if exists
-        if (Files.exists(configFile)) {
+        // Read config from resource.json attributes
+        if (Files.exists(resourceFile)) {
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             @SuppressWarnings("unchecked")
-            Map<String, Object> queryConfig = mapper.readValue(Files.readString(configFile), Map.class);
-            result.putAll(queryConfig);
+            Map<String, Object> resourceMeta = mapper.readValue(Files.readString(resourceFile), Map.class);
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> attributes = (Map<String, Object>) resourceMeta.getOrDefault("attributes", new LinkedHashMap<>());
+
+            // Map "type" back to "queryType" for API consistency
+            if (attributes.containsKey("type")) {
+                result.put("queryType", attributes.get("type"));
+            }
+            if (attributes.containsKey("database")) {
+                result.put("database", attributes.get("database"));
+            }
+            if (attributes.containsKey("fallbackValue")) {
+                result.put("fallbackValue", attributes.get("fallbackValue"));
+            }
+            if (attributes.containsKey("cacheEnabled")) {
+                result.put("cacheEnabled", attributes.get("cacheEnabled"));
+            }
+            if (attributes.containsKey("enabled")) {
+                result.put("enabled", attributes.get("enabled"));
+            }
+        }
+
+        // Also check for legacy query.json format (for backwards compatibility)
+        Path legacyConfigFile = queryDir.resolve("query.json");
+        if (Files.exists(legacyConfigFile)) {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            @SuppressWarnings("unchecked")
+            Map<String, Object> queryConfig = mapper.readValue(Files.readString(legacyConfigFile), Map.class);
+            // Only add if not already present from resource.json
+            for (Map.Entry<String, Object> entry : queryConfig.entrySet()) {
+                if (!result.containsKey(entry.getKey())) {
+                    result.put(entry.getKey(), entry.getValue());
+                }
+            }
         }
 
         return result;
@@ -495,6 +564,8 @@ public class NamedQueryResourceHandler implements ResourceHandler {
 
     /**
      * Saves a named query.
+     *
+     * Updates both query.sql (if SQL changed) and resource.json attributes.
      */
     private Map<String, Object> saveQueryInternal(NamedQueryPath queryPath,
                                                    Map<String, Object> config) throws Exception {
@@ -513,23 +584,46 @@ public class NamedQueryResourceHandler implements ResourceHandler {
             Files.writeString(sqlFile, String.valueOf(config.get("query")), StandardCharsets.UTF_8);
         }
 
-        // Update query.json
-        Path configFile = queryDir.resolve("query.json");
-        Map<String, Object> queryConfig = new LinkedHashMap<>();
-        if (Files.exists(configFile)) {
+        // Update resource.json attributes
+        Path resourceFile = queryDir.resolve("resource.json");
+        Map<String, Object> resourceMeta = new LinkedHashMap<>();
+        Map<String, Object> attributes = new LinkedHashMap<>();
+
+        if (Files.exists(resourceFile)) {
             @SuppressWarnings("unchecked")
-            Map<String, Object> existing = mapper.readValue(Files.readString(configFile), Map.class);
-            queryConfig.putAll(existing);
+            Map<String, Object> existing = mapper.readValue(Files.readString(resourceFile), Map.class);
+            resourceMeta.putAll(existing);
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> existingAttrs = (Map<String, Object>) existing.getOrDefault("attributes", new LinkedHashMap<>());
+            attributes.putAll(existingAttrs);
         }
 
-        // Merge in new values
-        for (String key : Arrays.asList("queryType", "database", "parameters", "fallbackValue")) {
-            if (config.containsKey(key)) {
-                queryConfig.put(key, config.get(key));
-            }
+        // Map API fields to resource.json attribute names
+        if (config.containsKey("queryType")) {
+            attributes.put("type", config.get("queryType"));
+        }
+        if (config.containsKey("database")) {
+            attributes.put("database", config.get("database"));
+        }
+        if (config.containsKey("fallbackValue")) {
+            attributes.put("fallbackValue", config.get("fallbackValue"));
+        }
+        if (config.containsKey("cacheEnabled")) {
+            attributes.put("cacheEnabled", config.get("cacheEnabled"));
+        }
+        if (config.containsKey("enabled")) {
+            attributes.put("enabled", config.get("enabled"));
         }
 
-        Files.writeString(configFile, mapper.writerWithDefaultPrettyPrinter().writeValueAsString(queryConfig), StandardCharsets.UTF_8);
+        // Update lastModification timestamp
+        Map<String, Object> lastMod = new LinkedHashMap<>();
+        lastMod.put("actor", "llm-gateway");
+        lastMod.put("timestamp", Instant.now().toString().substring(0, 19) + "Z");
+        attributes.put("lastModification", lastMod);
+
+        resourceMeta.put("attributes", attributes);
+        Files.writeString(resourceFile, mapper.writerWithDefaultPrettyPrinter().writeValueAsString(resourceMeta), StandardCharsets.UTF_8);
 
         logger.info("Updated named query at: {}", queryDir);
 
