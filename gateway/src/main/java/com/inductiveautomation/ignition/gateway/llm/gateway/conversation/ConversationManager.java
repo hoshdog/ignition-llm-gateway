@@ -96,9 +96,9 @@ public class ConversationManager {
         );
 
         // Security: Verify auth matches the conversation owner
-        if (!conversation.getAuthContext().getKeyId().equals(auth.getKeyId())) {
-            logger.warn("Attempt to access conversation {} with different API key", conversationId);
-            throw new SecurityException("Conversation belongs to a different API key");
+        if (!conversation.getAuthContext().getUserId().equals(auth.getUserId())) {
+            logger.warn("Attempt to access conversation {} with different user", conversationId);
+            throw new SecurityException("Conversation belongs to a different user");
         }
 
         // Add user message
@@ -145,9 +145,9 @@ public class ConversationManager {
             );
 
             // Security: Verify auth matches the conversation owner
-            if (!conversation.getAuthContext().getKeyId().equals(auth.getKeyId())) {
-                logger.warn("Attempt to access conversation {} with different API key", conversationId);
-                handler.onError(new SecurityException("Conversation belongs to a different API key"));
+            if (!conversation.getAuthContext().getUserId().equals(auth.getUserId())) {
+                logger.warn("Attempt to access conversation {} with different user", conversationId);
+                handler.onError(new SecurityException("Conversation belongs to a different user"));
                 return;
             }
 

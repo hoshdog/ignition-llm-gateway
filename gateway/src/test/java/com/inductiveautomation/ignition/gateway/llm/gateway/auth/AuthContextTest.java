@@ -32,23 +32,31 @@ class AuthContextTest {
         }
 
         @Test
-        @DisplayName("should build AuthContext from ApiKey")
-        void shouldBuildFromApiKey() {
-            ApiKey apiKey = ApiKey.create(
-                    "key-hash",
-                    "key-salt",
-                    "test-api-key",
-                    Set.of(Permission.TAG_READ, Permission.VIEW_READ)
-            );
-
+        @DisplayName("should build AuthContext with user name and source")
+        void shouldBuildWithUserNameAndSource() {
             AuthContext context = AuthContext.builder()
-                    .fromApiKey(apiKey)
+                    .userId("admin")
+                    .userName("Administrator")
+                    .userSource("default")
+                    .permissions(Set.of(Permission.ADMIN))
                     .build();
 
-            // UserId is prefixed with "api-key:" when created from ApiKey
-            assertEquals("api-key:test-api-key", context.getUserId());
-            assertTrue(context.hasPermission(Permission.TAG_READ));
-            assertTrue(context.hasPermission(Permission.VIEW_READ));
+            assertEquals("admin", context.getUserId());
+            assertEquals("Administrator", context.getUserName());
+            assertEquals("default", context.getUserSource());
+            assertTrue(context.isAdmin());
+        }
+
+        @Test
+        @DisplayName("should use userId as userName when userName not set")
+        void shouldUseUserIdAsUserNameFallback() {
+            AuthContext context = AuthContext.builder()
+                    .userId("testuser")
+                    .permissions(Set.of())
+                    .build();
+
+            assertEquals("testuser", context.getUserId());
+            assertEquals("testuser", context.getUserName());
         }
 
         @Test
@@ -74,6 +82,22 @@ class AuthContextTest {
 
             assertEquals("custom-value", context.getAttribute("custom.key"));
         }
+
+        @Test
+        @DisplayName("should generate audit string with user info")
+        void shouldGenerateAuditString() {
+            AuthContext context = AuthContext.builder()
+                    .userId("testuser")
+                    .userSource("default")
+                    .clientAddress("10.0.0.1")
+                    .permissions(Set.of())
+                    .build();
+
+            String auditString = context.toAuditString();
+            assertTrue(auditString.contains("user=testuser"));
+            assertTrue(auditString.contains("source=default"));
+            assertTrue(auditString.contains("from=10.0.0.1"));
+        }
     }
 
     @Nested
@@ -91,6 +115,24 @@ class AuthContextTest {
             assertTrue(context.isAdmin());
             // Admin should effectively have all permissions
             assertTrue(context.hasPermission(Permission.ADMIN));
+            assertTrue(context.hasPermission(Permission.TAG_READ));
+            assertTrue(context.hasPermission(Permission.VIEW_DELETE));
+            assertTrue(context.hasPermission(Permission.SCRIPT_CREATE));
+        }
+
+        @Test
+        @DisplayName("should grant read permissions when READ_ALL is set")
+        void shouldGrantReadPermissionsWithReadAll() {
+            AuthContext context = AuthContext.builder()
+                    .userId("viewer")
+                    .permissions(Set.of(Permission.READ_ALL))
+                    .build();
+
+            assertTrue(context.hasPermission(Permission.TAG_READ));
+            assertTrue(context.hasPermission(Permission.VIEW_READ));
+            assertTrue(context.hasPermission(Permission.SCRIPT_READ));
+            assertFalse(context.hasPermission(Permission.TAG_CREATE));
+            assertFalse(context.hasPermission(Permission.VIEW_DELETE));
         }
 
         @Test
@@ -128,25 +170,33 @@ class AuthContextTest {
             assertTrue(context.hasAnyPermission(Set.of(Permission.TAG_READ, Permission.TAG_DELETE)));
             assertFalse(context.hasAnyPermission(Set.of(Permission.VIEW_READ, Permission.SCRIPT_READ)));
         }
+
+        @Test
+        @DisplayName("should not grant admin permissions without ADMIN permission")
+        void shouldNotGrantAdminWithoutPermission() {
+            AuthContext context = AuthContext.builder()
+                    .userId("regular-user")
+                    .permissions(Set.of(Permission.TAG_READ, Permission.TAG_CREATE))
+                    .build();
+
+            assertFalse(context.isAdmin());
+            assertFalse(context.hasPermission(Permission.ADMIN));
+        }
     }
 
     @Nested
-    @DisplayName("Key Prefix Tracking")
-    class KeyPrefixTracking {
+    @DisplayName("Anonymous Context")
+    class AnonymousContext {
 
         @Test
-        @DisplayName("should track key prefix from API key")
-        void shouldTrackKeyPrefix() {
-            ApiKey apiKey = ApiKey.create(
-                    "hash", "salt", "api-key",
-                    Set.of(Permission.TAG_READ)
-            );
+        @DisplayName("should create anonymous context with no permissions")
+        void shouldCreateAnonymousContext() {
+            AuthContext context = AuthContext.anonymous("127.0.0.1");
 
-            AuthContext context = AuthContext.builder()
-                    .fromApiKey(apiKey)
-                    .build();
-
-            assertNotNull(context.getKeyPrefix());
+            assertEquals("anonymous", context.getUserId());
+            assertEquals("127.0.0.1", context.getClientAddress());
+            assertTrue(context.getPermissions().isEmpty());
+            assertFalse(context.isAdmin());
         }
     }
 }

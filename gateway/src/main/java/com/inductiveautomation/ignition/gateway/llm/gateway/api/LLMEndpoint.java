@@ -8,12 +8,10 @@ import com.inductiveautomation.ignition.gateway.llm.common.model.Action;
 import com.inductiveautomation.ignition.gateway.llm.common.model.ActionResult;
 import com.inductiveautomation.ignition.gateway.llm.gateway.LLMGatewayContext;
 import com.inductiveautomation.ignition.gateway.llm.gateway.LLMGatewayModuleHolder;
-import com.inductiveautomation.ignition.gateway.llm.gateway.auth.ApiKey;
-import com.inductiveautomation.ignition.gateway.llm.gateway.auth.ApiKeyManager;
 import com.inductiveautomation.ignition.gateway.llm.gateway.auth.AuthContext;
 import com.inductiveautomation.ignition.gateway.llm.gateway.auth.AuthenticationException;
-import com.inductiveautomation.ignition.gateway.llm.gateway.auth.AuthenticationService;
 import com.inductiveautomation.ignition.gateway.llm.gateway.auth.AuthorizationException;
+import com.inductiveautomation.ignition.gateway.llm.gateway.auth.BasicAuthenticationService;
 import com.inductiveautomation.ignition.gateway.llm.gateway.auth.Permission;
 import com.inductiveautomation.ignition.gateway.llm.gateway.audit.CorrelationContext;
 import com.inductiveautomation.ignition.gateway.llm.gateway.conversation.ConversationManager;
@@ -39,14 +37,10 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -57,13 +51,19 @@ import java.util.stream.Collectors;
  * <p>The servlet is mounted at /system/llm-gateway/* by GatewayHook.
  * Since Ignition's WebResourceManager.addServlet() only accepts a Class (not an instance),
  * this servlet uses LLMGatewayModuleHolder to access module dependencies.</p>
+ *
+ * <p><b>Authentication:</b> This endpoint uses HTTP Basic Auth. Credentials are validated
+ * against Ignition's configured user sources. Example:</p>
+ * <pre>
+ * curl -u admin:password http://localhost:8088/system/llm-gateway/info
+ * </pre>
  */
 public class LLMEndpoint extends HttpServlet {
 
     private static final Logger logger = LoggerFactory.getLogger(LLMEndpoint.class);
 
     private LLMGatewayContext llmContext;
-    private AuthenticationService authService;
+    private BasicAuthenticationService authService;
     private ConversationManager conversationManager;
     private RateLimiter rateLimiter;
     private ObjectMapper objectMapper;
@@ -158,13 +158,6 @@ public class LLMEndpoint extends HttpServlet {
     }
 
     /**
-     * Note: Servlet registration is now handled by GatewayHook.startup()
-     * using gatewayContext.getWebResourceManager().addServlet()
-     *
-     * The servlet is mounted at /system/llm-gateway/*
-     */
-
-    /**
      * Servlet name prefix for path normalization.
      * Ignition may route requests with pathInfo that includes the servlet name.
      */
@@ -208,7 +201,7 @@ public class LLMEndpoint extends HttpServlet {
             return;
         }
 
-        // Admin endpoints - require Gateway admin auth
+        // Admin endpoints - require admin authentication
         if (isAdminPath(path)) {
             handleAdminGet(req, resp, path);
             return;
@@ -243,7 +236,7 @@ public class LLMEndpoint extends HttpServlet {
             return;
         }
 
-        // Admin endpoints - require Gateway admin auth
+        // Admin endpoints - require admin authentication
         if (isAdminPath(path)) {
             handleAdminPost(req, resp, path);
             return;
@@ -260,29 +253,6 @@ public class LLMEndpoint extends HttpServlet {
         } else {
             sendError(resp, HttpServletResponse.SC_NOT_FOUND, "Endpoint not found", null);
         }
-    }
-
-    @Override
-    protected void doDelete(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-        // All DELETE endpoints require full initialization
-        if (!isModuleAvailable()) {
-            sendError(resp, HttpServletResponse.SC_SERVICE_UNAVAILABLE,
-                    "LLM Gateway module is not initialized", null);
-            return;
-        }
-
-        String rawPath = req.getPathInfo();
-        String path = normalizePath(rawPath);
-
-        logger.debug("LLMEndpoint doDelete: rawPathInfo='{}', normalizedPath='{}'", rawPath, path);
-
-        // Only admin endpoints support DELETE
-        if (isAdminPath(path)) {
-            handleAdminDelete(req, resp, path);
-            return;
-        }
-
-        sendError(resp, HttpServletResponse.SC_METHOD_NOT_ALLOWED, "Method not allowed", null);
     }
 
     /**
@@ -305,12 +275,13 @@ public class LLMEndpoint extends HttpServlet {
         }
 
         health.put("timestamp", Instant.now().toString());
+        health.put("authentication", "Basic Auth (Ignition user credentials)");
 
         sendJson(resp, HttpServletResponse.SC_OK, health);
     }
 
     /**
-     * Handles authenticated info requests (requires valid API key).
+     * Handles authenticated info requests (requires valid credentials).
      */
     private void handleAuthenticatedInfo(HttpServletRequest req, HttpServletResponse resp) throws IOException {
         String correlationId = generateCorrelationId();
@@ -325,6 +296,7 @@ public class LLMEndpoint extends HttpServlet {
             info.put("environmentMode", llmContext.getEnvironmentMode().getValue());
             info.put("supportedResourceTypes", llmContext.getActionExecutor().getSupportedResourceTypes());
             info.put("user", auth.getUserId());
+            info.put("userSource", auth.getUserSource());
             info.put("permissions", auth.getPermissions().stream()
                     .map(p -> p.getCode())
                     .sorted()
@@ -390,8 +362,6 @@ public class LLMEndpoint extends HttpServlet {
 
             // Override correlation ID if not set in action
             if (action.getCorrelationId() == null || action.getCorrelationId().isEmpty()) {
-                // Create a new action with our correlation ID
-                // This is a limitation of the current action model
                 logger.debug("[{}] Using generated correlation ID for action", correlationId);
             }
 
@@ -399,7 +369,6 @@ public class LLMEndpoint extends HttpServlet {
             llmContext.getAuditLogger().logActionRequest(action, authContext.getUserId(), clientAddress);
 
             // Step 5: Execute the action (authorization happens inside executor)
-            // Authorization errors are returned as FAILURE results, not thrown
             ActionResult result = llmContext.getActionExecutor().execute(action, authContext);
 
             // Step 6: Determine HTTP status code based on result
@@ -590,11 +559,11 @@ public class LLMEndpoint extends HttpServlet {
             sendSSEEvent(writer, "conversation_id",
                     objectMapper.writeValueAsString(Map.of("id", conversationId)));
 
-            // Rate limit check
+            // Rate limit check using user ID
             if (rateLimiter != null) {
                 int estimatedTokens = chatRequest.getMessage().length() / 4; // Rough estimate
                 RateLimitResult rateLimitResult = rateLimiter.checkLimit(
-                        authContext.getKeyId(), estimatedTokens);
+                        authContext.getUserId(), estimatedTokens);
 
                 if (!rateLimitResult.isAllowed()) {
                     sendSSEError(writer, "rate_limit_exceeded", rateLimitResult.getMessage());
@@ -739,30 +708,19 @@ public class LLMEndpoint extends HttpServlet {
             String yaml = new String(is.readAllBytes(), StandardCharsets.UTF_8);
 
             if (asJson) {
-                // Convert YAML to JSON using a simple approach
-                // For a proper implementation, use a YAML library
-                // For now, we'll serve a simplified JSON representation
-                try {
-                    // Parse YAML as nested structure and convert to JSON
-                    // This is a simplified approach - a real implementation would use SnakeYAML
-                    resp.setContentType("application/json");
-                    resp.setCharacterEncoding("UTF-8");
+                resp.setContentType("application/json");
+                resp.setCharacterEncoding("UTF-8");
 
-                    // Create a simplified JSON representation
-                    Map<String, Object> spec = new LinkedHashMap<>();
-                    spec.put("openapi", "3.0.3");
-                    spec.put("info", Map.of(
-                            "title", "Ignition LLM Gateway API",
-                            "version", "1.0.0"
-                    ));
-                    spec.put("note", "For full specification, use /openapi.yaml");
+                // Create a simplified JSON representation
+                Map<String, Object> spec = new LinkedHashMap<>();
+                spec.put("openapi", "3.0.3");
+                spec.put("info", Map.of(
+                        "title", "Ignition LLM Gateway API",
+                        "version", "1.0.0"
+                ));
+                spec.put("note", "For full specification, use /openapi.yaml");
 
-                    objectMapper.writeValue(resp.getWriter(), spec);
-                } catch (Exception e) {
-                    logger.error("Failed to convert OpenAPI spec to JSON", e);
-                    sendError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
-                            "Failed to convert spec to JSON", null);
-                }
+                objectMapper.writeValue(resp.getWriter(), spec);
             } else {
                 resp.setContentType("text/yaml");
                 resp.setCharacterEncoding("UTF-8");
@@ -855,43 +813,14 @@ public class LLMEndpoint extends HttpServlet {
     // ========== Admin Endpoint Handlers ==========
 
     /**
-     * Verifies Gateway admin authentication using Basic auth.
-     * For now, accepts configured admin credentials.
-     * TODO: Integrate with GatewayContext.getUserSourceManager() for proper auth.
+     * Verifies admin authentication using Basic auth against Ignition's user source.
+     * Requires the user to have Administrator role.
      */
-    private boolean isGatewayAdmin(HttpServletRequest req) {
-        String authHeader = req.getHeader("Authorization");
-        if (authHeader == null || !authHeader.startsWith("Basic ")) {
-            return false;
-        }
-
+    private boolean isAdmin(HttpServletRequest req) {
         try {
-            String base64Credentials = authHeader.substring("Basic ".length());
-            String credentials = new String(Base64.getDecoder().decode(base64Credentials), StandardCharsets.UTF_8);
-            String[] parts = credentials.split(":", 2);
-
-            if (parts.length != 2) {
-                return false;
-            }
-
-            // For now, validate against hardcoded dev credentials
-            // TODO: Use Ignition's UserSourceManager for production
-            // This should be replaced with proper integration to Gateway's auth system
-            String username = parts[0];
-            String password = parts[1];
-
-            // Accept 'admin' user with 'password' for development
-            // In production, this should validate against Ignition's user sources
-            if ("admin".equals(username) && "password".equals(password)) {
-                return true;
-            }
-
-            // Log failed attempt
-            logger.warn("Admin auth failed for user: {}", username);
-            return false;
-
-        } catch (Exception e) {
-            logger.warn("Failed to parse admin auth header: {}", e.getMessage());
+            AuthContext auth = authService.authenticate(req);
+            return auth.isAdmin();
+        } catch (AuthenticationException e) {
             return false;
         }
     }
@@ -900,16 +829,17 @@ public class LLMEndpoint extends HttpServlet {
      * Handles GET requests to admin endpoints.
      */
     private void handleAdminGet(HttpServletRequest req, HttpServletResponse resp, String path) throws IOException {
-        if (!isGatewayAdmin(req)) {
-            resp.setHeader("WWW-Authenticate", "Basic realm=\"LLM Gateway Admin\"");
-            sendError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Gateway admin authentication required", null);
+        if (!isAdmin(req)) {
+            resp.setHeader("WWW-Authenticate", "Basic realm=\"Ignition LLM Gateway Admin\"");
+            sendError(resp, HttpServletResponse.SC_UNAUTHORIZED,
+                    "Administrator authentication required. Use Ignition admin credentials.", null);
             return;
         }
 
-        if (path.equals("/admin/api-keys")) {
-            handleListApiKeys(resp);
-        } else if (path.equals("/admin/providers")) {
+        if (path.equals("/admin/providers")) {
             handleAdminListProviders(resp);
+        } else if (path.equals("/admin/roles")) {
+            handleListRoleMappings(resp);
         } else {
             sendError(resp, HttpServletResponse.SC_NOT_FOUND, "Admin endpoint not found: " + path, null);
         }
@@ -919,15 +849,14 @@ public class LLMEndpoint extends HttpServlet {
      * Handles POST requests to admin endpoints.
      */
     private void handleAdminPost(HttpServletRequest req, HttpServletResponse resp, String path) throws IOException {
-        if (!isGatewayAdmin(req)) {
-            resp.setHeader("WWW-Authenticate", "Basic realm=\"LLM Gateway Admin\"");
-            sendError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Gateway admin authentication required", null);
+        if (!isAdmin(req)) {
+            resp.setHeader("WWW-Authenticate", "Basic realm=\"Ignition LLM Gateway Admin\"");
+            sendError(resp, HttpServletResponse.SC_UNAUTHORIZED,
+                    "Administrator authentication required. Use Ignition admin credentials.", null);
             return;
         }
 
-        if (path.equals("/admin/api-keys")) {
-            handleCreateApiKey(req, resp);
-        } else if (path.startsWith("/admin/providers/") && path.endsWith("/config")) {
+        if (path.startsWith("/admin/providers/") && path.endsWith("/config")) {
             String providerId = extractProviderId(path);
             handleConfigureProvider(providerId, req, resp);
         } else if (path.equals("/admin/providers/default")) {
@@ -938,28 +867,9 @@ public class LLMEndpoint extends HttpServlet {
     }
 
     /**
-     * Handles DELETE requests to admin endpoints.
-     */
-    private void handleAdminDelete(HttpServletRequest req, HttpServletResponse resp, String path) throws IOException {
-        if (!isGatewayAdmin(req)) {
-            resp.setHeader("WWW-Authenticate", "Basic realm=\"LLM Gateway Admin\"");
-            sendError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Gateway admin authentication required", null);
-            return;
-        }
-
-        if (path.startsWith("/admin/api-keys/")) {
-            String keyId = path.substring("/admin/api-keys/".length());
-            handleRevokeApiKey(keyId, resp);
-        } else {
-            sendError(resp, HttpServletResponse.SC_NOT_FOUND, "Admin endpoint not found: " + path, null);
-        }
-    }
-
-    /**
      * Extracts the provider ID from a path like /admin/providers/{providerId}/config.
      */
     private String extractProviderId(String path) {
-        // Path is like "/admin/providers/claude/config"
         String withoutPrefix = path.substring("/admin/providers/".length());
         int slashIdx = withoutPrefix.indexOf('/');
         if (slashIdx > 0) {
@@ -969,115 +879,30 @@ public class LLMEndpoint extends HttpServlet {
     }
 
     /**
-     * Handles listing all API keys.
+     * Lists the current role-to-permission mappings.
      */
-    private void handleListApiKeys(HttpServletResponse resp) throws IOException {
-        ApiKeyManager apiKeyManager = llmContext.getApiKeyManager();
-        Collection<ApiKey> keys = apiKeyManager.getAllKeys();
-
-        List<Map<String, Object>> keyList = keys.stream()
-                .map(k -> {
-                    Map<String, Object> info = new LinkedHashMap<>();
-                    info.put("id", k.getId());
-                    info.put("name", k.getName());
-                    info.put("keyPrefix", k.getKeyPrefix());
-                    info.put("permissions", k.getPermissions().stream()
-                            .map(Permission::getCode)
-                            .sorted()
-                            .collect(Collectors.toList()));
-                    info.put("enabled", k.isEnabled());
-                    info.put("createdAt", k.getCreatedAt().toString());
-                    info.put("lastUsedAt", k.getLastUsedAt() != null ? k.getLastUsedAt().toString() : null);
-                    info.put("expiresAt", k.getExpiresAt() != null ? k.getExpiresAt().toString() : null);
-                    return info;
-                })
-                .collect(Collectors.toList());
-
+    private void handleListRoleMappings(HttpServletResponse resp) throws IOException {
         Map<String, Object> response = new LinkedHashMap<>();
-        response.put("keys", keyList);
-        response.put("count", keyList.size());
+
+        // Get role mappings from auth service
+        Map<String, java.util.Set<Permission>> mappings = authService.getRolePermissionMap();
+
+        List<Map<String, Object>> roleMappings = new ArrayList<>();
+        for (Map.Entry<String, java.util.Set<Permission>> entry : mappings.entrySet()) {
+            Map<String, Object> roleInfo = new LinkedHashMap<>();
+            roleInfo.put("role", entry.getKey());
+            roleInfo.put("permissions", entry.getValue().stream()
+                    .map(Permission::getCode)
+                    .sorted()
+                    .toList());
+            roleMappings.add(roleInfo);
+        }
+
+        response.put("roleMappings", roleMappings);
+        response.put("userSource", authService.getUserSourceProfile());
         response.put("timestamp", Instant.now().toString());
 
         sendJson(resp, HttpServletResponse.SC_OK, response);
-    }
-
-    /**
-     * Handles creating a new API key.
-     */
-    private void handleCreateApiKey(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-        String body = req.getReader().lines().collect(Collectors.joining());
-        JsonNode json = objectMapper.readTree(body);
-
-        String name = json.path("name").asText("unnamed-key");
-
-        // Parse permissions
-        Set<Permission> permissions = new HashSet<>();
-        JsonNode permsNode = json.path("permissions");
-        if (permsNode.isArray()) {
-            for (JsonNode perm : permsNode) {
-                try {
-                    permissions.add(Permission.fromCode(perm.asText()));
-                } catch (IllegalArgumentException e) {
-                    // Try as enum name
-                    try {
-                        permissions.add(Permission.valueOf(perm.asText()));
-                    } catch (IllegalArgumentException e2) {
-                        logger.warn("Unknown permission: {}", perm.asText());
-                    }
-                }
-            }
-        }
-
-        // Default to read-only if no permissions specified
-        if (permissions.isEmpty()) {
-            permissions.add(Permission.TAG_READ);
-            permissions.add(Permission.VIEW_READ);
-            permissions.add(Permission.PROJECT_READ);
-        }
-
-        // Create the key
-        ApiKeyManager apiKeyManager = llmContext.getApiKeyManager();
-        ApiKeyManager.ApiKeyCreationResult result = apiKeyManager.createKey(name, permissions);
-
-        // Build response with the raw key (only time it's visible!)
-        Map<String, Object> response = new LinkedHashMap<>();
-        response.put("success", true);
-        response.put("keyId", result.getApiKey().getId());
-        response.put("keyPrefix", result.getApiKey().getKeyPrefix());
-        response.put("rawKey", result.getRawKey());  // ONLY SHOWN ONCE
-        response.put("permissions", permissions.stream()
-                .map(Permission::getCode)
-                .sorted()
-                .collect(Collectors.toList()));
-        response.put("warning", "Save this key now! It cannot be retrieved later.");
-        response.put("timestamp", Instant.now().toString());
-
-        logger.info("Created API key: {} (id={}, permissions={})",
-                name, result.getApiKey().getId(), permissions.size());
-
-        sendJson(resp, HttpServletResponse.SC_CREATED, response);
-    }
-
-    /**
-     * Handles revoking an API key.
-     */
-    private void handleRevokeApiKey(String keyId, HttpServletResponse resp) throws IOException {
-        ApiKeyManager apiKeyManager = llmContext.getApiKeyManager();
-        boolean revoked = apiKeyManager.revokeKey(keyId);
-
-        Map<String, Object> response = new LinkedHashMap<>();
-        if (revoked) {
-            response.put("success", true);
-            response.put("message", "API key revoked");
-            response.put("keyId", keyId);
-            logger.info("Revoked API key: {}", keyId);
-            sendJson(resp, HttpServletResponse.SC_OK, response);
-        } else {
-            response.put("success", false);
-            response.put("error", "API key not found");
-            response.put("keyId", keyId);
-            sendJson(resp, HttpServletResponse.SC_NOT_FOUND, response);
-        }
     }
 
     /**
@@ -1285,34 +1110,12 @@ public class LLMEndpoint extends HttpServlet {
         error.put("reason", e.getReason().name());
         error.put("correlationId", correlationId);
         error.put("timestamp", Instant.now().toString());
+        error.put("hint", "Use HTTP Basic auth with Ignition user credentials: -u username:password");
 
         // Add WWW-Authenticate header for 401 responses
-        resp.setHeader("WWW-Authenticate", "Bearer realm=\"LLM Gateway\"");
+        resp.setHeader("WWW-Authenticate", "Basic realm=\"Ignition LLM Gateway\"");
 
         sendJson(resp, HttpServletResponse.SC_UNAUTHORIZED, error);
-    }
-
-    /**
-     * Handles authorization errors.
-     */
-    private void handleAuthorizationError(HttpServletResponse resp, AuthorizationException e,
-                                          String correlationId, AuthContext auth, Action action) throws IOException {
-        logger.warn("[{}] Authorization denied for user {} on {}/{}: {}",
-                correlationId, auth.getUserId(), action.getResourceType(),
-                action.getActionType(), e.getMessage());
-
-        Map<String, Object> error = new LinkedHashMap<>();
-        error.put("error", "Authorization denied");
-        error.put("message", e.getMessage());
-        error.put("correlationId", correlationId);
-        error.put("resourceType", action.getResourceType());
-        error.put("actionType", action.getActionType());
-        if (e.getRequiredPermission() != null) {
-            error.put("requiredPermission", e.getRequiredPermission().getCode());
-        }
-        error.put("timestamp", Instant.now().toString());
-
-        sendJson(resp, HttpServletResponse.SC_FORBIDDEN, error);
     }
 
     /**
@@ -1330,12 +1133,12 @@ public class LLMEndpoint extends HttpServlet {
             case FAILURE:
                 // Check if it's a not-found error
                 if (result.getErrors() != null &&
-                        result.getErrors().stream().anyMatch(e -> e.contains("NOT_FOUND"))) {
+                        result.getErrors().stream().anyMatch(err -> err.contains("NOT_FOUND"))) {
                     return HttpServletResponse.SC_NOT_FOUND;
                 }
                 // Check if it's a conflict error
                 if (result.getErrors() != null &&
-                        result.getErrors().stream().anyMatch(e -> e.contains("CONFLICT"))) {
+                        result.getErrors().stream().anyMatch(err -> err.contains("CONFLICT"))) {
                     return HttpServletResponse.SC_CONFLICT;
                 }
                 return HttpServletResponse.SC_BAD_REQUEST;

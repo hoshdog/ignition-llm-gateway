@@ -15,7 +15,7 @@ A Model Context Protocol (MCP) server that connects Claude Desktop directly to y
 - Node.js 18 or later
 - Ignition Gateway with LLM Gateway module installed
 - Claude Desktop application
-- Valid API key for the LLM Gateway module
+- Ignition user account with appropriate permissions
 
 ## Installation
 
@@ -40,17 +40,18 @@ Add the MCP server configuration:
   "mcpServers": {
     "ignition-gateway": {
       "command": "node",
-      "args": ["C:\\Users\\HoshitoPowell\\Desktop\\Ignition Gateway LLM Module\\ignition-mcp-server\\build\\index.js"],
+      "args": ["C:\\path\\to\\ignition-mcp-server\\build\\index.js"],
       "env": {
-        "IGNITION_GATEWAY_URL": "http://localhost:8089",
-        "IGNITION_API_KEY": "llmgw_YOUR_API_KEY_HERE"
+        "IGNITION_GATEWAY_URL": "http://localhost:8088",
+        "IGNITION_USERNAME": "admin",
+        "IGNITION_PASSWORD": "password"
       }
     }
   }
 }
 ```
 
-**Important:** Update the paths and API key for your environment.
+**Important:** Update the paths and credentials for your environment.
 
 ### 3. Restart Claude Desktop
 
@@ -115,13 +116,26 @@ Create a new script with a helper function
 | `create_named_query` | Create new query |
 | `update_named_query` | Update query |
 | `delete_named_query` | Delete a query |
+| `trigger_project_scan` | Trigger Gateway to detect resource changes |
 
 ## Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `IGNITION_GATEWAY_URL` | Gateway URL | `http://localhost:8088` |
-| `IGNITION_API_KEY` | LLM Gateway API key | (required) |
+| `IGNITION_USERNAME` | Ignition username | (required) |
+| `IGNITION_PASSWORD` | Ignition password | (required) |
+
+## Authentication
+
+This MCP server uses HTTP Basic Authentication with your Ignition user credentials. The user account you configure must have appropriate permissions in Ignition:
+
+| Ignition Role | Permissions |
+|---------------|-------------|
+| Administrator | Full access (all operations) |
+| Developer | Full CRUD on all resource types |
+| Operator | Read/write tags, read-only views |
+| Viewer | Read-only access |
 
 ## Troubleshooting
 
@@ -133,26 +147,15 @@ Create a new script with a helper function
 
 ### API Errors
 
-1. Verify Gateway is running: `curl http://localhost:8089/system/llm-gateway/health`
-2. Check API key is valid and has required permissions
+1. Verify Gateway is running: `curl http://localhost:8088/system/llm-gateway/health`
+2. Check credentials are correct: `curl -u admin:password http://localhost:8088/system/llm-gateway/info`
 3. Ensure IGNITION_GATEWAY_URL matches your Gateway
 
-### Creating API Keys
+### Authentication Fails
 
-```bash
-curl -u admin:password -X POST http://localhost:8089/system/llm-gateway/admin/api-keys \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "mcp-client",
-    "permissions": [
-      "tag:read", "tag:create", "tag:update", "tag:delete",
-      "view:read", "view:create", "view:update", "view:delete",
-      "script:read", "script:create", "script:update", "script:delete",
-      "named_query:read", "named_query:create", "named_query:update", "named_query:delete",
-      "project:read"
-    ]
-  }'
-```
+1. Verify the username and password are correct
+2. Check the user exists in Ignition's user source
+3. Ensure the user has required permissions/roles
 
 ## License
 

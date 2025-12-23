@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.inductiveautomation.ignition.gateway.llm.gateway.LLMGatewayContext;
 import com.inductiveautomation.ignition.gateway.llm.gateway.LLMGatewayModuleHolder;
 import com.inductiveautomation.ignition.gateway.llm.gateway.auth.AuthContext;
-import com.inductiveautomation.ignition.gateway.llm.gateway.auth.AuthenticationService;
+import com.inductiveautomation.ignition.gateway.llm.gateway.auth.BasicAuthenticationService;
 import com.inductiveautomation.ignition.gateway.project.ProjectManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,7 +29,12 @@ import java.util.Map;
  *   <li>GET /system/llm-gateway-scan/ - Returns endpoint information</li>
  * </ul>
  *
- * <p>Authentication is required via API key in the Authorization header.</p>
+ * <p>Authentication is required via HTTP Basic Auth with Ignition user credentials.</p>
+ *
+ * <p>Example:</p>
+ * <pre>
+ * curl -X POST -u admin:password http://localhost:8088/system/llm-gateway-scan/
+ * </pre>
  */
 public class ProjectScanServlet extends HttpServlet {
 
@@ -67,8 +72,9 @@ public class ProjectScanServlet extends HttpServlet {
         info.put("endpoint", "project-scan");
         info.put("method", "POST");
         info.put("description", "Triggers Gateway project resource scan");
-        info.put("authentication", "Required - API key via Authorization header");
+        info.put("authentication", "Required - HTTP Basic Auth with Ignition credentials");
         info.put("usage", "POST to this endpoint after creating/modifying resources via filesystem");
+        info.put("example", "curl -X POST -u admin:password http://localhost:8088/system/llm-gateway-scan/");
 
         resp.getWriter().write(objectMapper.writeValueAsString(info));
     }
@@ -88,10 +94,11 @@ public class ProjectScanServlet extends HttpServlet {
 
         AuthContext authContext;
         try {
-            AuthenticationService authService = llmContext.getAuthenticationService();
+            BasicAuthenticationService authService = llmContext.getAuthenticationService();
             authContext = authService.authenticate(req);
         } catch (Exception e) {
             logger.warn("Authentication failed: {}", e.getMessage());
+            resp.setHeader("WWW-Authenticate", "Basic realm=\"Ignition LLM Gateway\"");
             sendError(resp, HttpServletResponse.SC_UNAUTHORIZED,
                     "Authentication failed: " + e.getMessage());
             return;

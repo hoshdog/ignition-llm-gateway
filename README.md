@@ -9,7 +9,8 @@ This module provides a controlled bridge between AI assistants and Ignition, a s
 ### Key Features
 
 - **Structured Actions**: Type-safe CRUD operations via JSON schema
-- **Policy-Based Access**: Environment-aware permissions (dev/test/prod)
+- **Native Ignition Authentication**: Uses existing Ignition user accounts (Basic Auth)
+- **Role-Based Access**: Ignition roles map to module permissions
 - **Full Auditability**: Append-only logs with correlation IDs
 - **Dry-Run Support**: Preview changes before execution
 - **Destructive Action Safeguards**: Confirmation required for deletes in production
@@ -85,67 +86,84 @@ Set the environment mode via system property:
 -Dllm.gateway.environment=production
 ```
 
+### Authentication
+
+This module uses **HTTP Basic Authentication** with Ignition user credentials:
+
+```bash
+# All authenticated endpoints use -u username:password
+curl -u admin:password http://localhost:8088/system/llm-gateway/info
+```
+
+**Security Note:** Basic Auth sends credentials Base64-encoded (not encrypted). Use HTTPS in production.
+
+### Role-to-Permission Mapping
+
+User roles from Ignition's user sources are mapped to module permissions:
+
+| Ignition Role | Permissions |
+|---------------|-------------|
+| Administrator | Full access (all operations) |
+| Developer | Full CRUD on all resource types |
+| Operator | Read/write tags, read-only views |
+| Viewer/Default | Read-only access |
+
 ### API Endpoints
 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
 | `/system/llm-gateway/health` | GET | None | Health check |
-| `/system/llm-gateway/api/v1/openapi.yaml` | GET | None | OpenAPI specification |
-| `/system/llm-gateway/api/v1/chat` | POST | Bearer | Natural language chat |
-| `/system/llm-gateway/api/v1/chat/stream` | POST | Bearer | Streaming chat (SSE) |
-| `/system/llm-gateway/api/v1/action` | POST | Bearer | Direct action execution |
-| `/system/llm-gateway/admin/providers` | GET | Basic | List LLM providers |
-| `/system/llm-gateway/admin/providers/{id}/config` | POST | Basic | Configure provider |
-| `/system/llm-gateway/admin/api-keys` | GET/POST | Basic | Manage API keys |
+| `/system/llm-gateway/info` | GET | Basic | Module info & user permissions |
+| `/system/llm-gateway/openapi.yaml` | GET | None | OpenAPI specification |
+| `/system/llm-gateway/chat` | POST | Basic | Natural language chat |
+| `/system/llm-gateway/chat/stream` | POST | Basic | Streaming chat (SSE) |
+| `/system/llm-gateway/action` | POST | Basic | Direct action execution |
+| `/system/llm-gateway/admin/providers` | GET | Basic (Admin) | List LLM providers |
+| `/system/llm-gateway/admin/providers/{id}/config` | POST | Basic (Admin) | Configure provider |
+| `/system/llm-gateway/admin/roles` | GET | Basic (Admin) | View role mappings |
 
 ### Quick Start
 
-#### 1. Configure LLM Provider
+#### 1. Check Module Health
 
 ```bash
-# Configure Claude (recommended)
+# No authentication required
+curl http://localhost:8088/system/llm-gateway/health
+```
+
+#### 2. View Your Permissions
+
+```bash
+# Authenticate with your Ignition credentials
+curl -u admin:password http://localhost:8088/system/llm-gateway/info
+```
+
+#### 3. Configure LLM Provider
+
+```bash
+# Configure Claude (requires admin role)
 curl -u admin:password -X POST \
   http://localhost:8088/system/llm-gateway/admin/providers/claude/config \
   -H "Content-Type: application/json" \
   -d '{"apiKey": "sk-ant-...", "defaultModel": "claude-sonnet-4-20250514", "enabled": true}'
 ```
 
-#### 2. Create API Key
+#### 4. Chat with the Gateway
 
 ```bash
-# Create an API key with full permissions
-curl -X POST http://localhost:8088/system/llm-gateway/admin/api-keys \
-  -u admin:password \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "my-app",
-    "permissions": [
-      "tag:read", "tag:create", "tag:update", "tag:delete",
-      "view:read", "view:create", "view:update", "view:delete",
-      "script:read", "script:create", "script:update", "script:delete",
-      "named_query:read", "named_query:create", "named_query:update", "named_query:delete",
-      "project:read"
-    ]
-  }'
-# Save the rawKey returned - it cannot be retrieved later!
-```
-
-#### 3. Chat with the Gateway
-
-```bash
-# Use the API key for chat
-curl -X POST http://localhost:8088/system/llm-gateway/api/v1/chat \
-  -H "Authorization: Bearer llmgw_YOUR_KEY_HERE" \
+# Use your Ignition credentials for chat
+curl -u admin:password -X POST \
+  http://localhost:8088/system/llm-gateway/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "List all tag providers and show me what tags exist"}'
 ```
 
-#### 4. Direct Action Execution
+#### 5. Direct Action Execution
 
 ```bash
 # Execute structured actions directly (without LLM)
-curl -X POST http://localhost:8088/system/llm-gateway/api/v1/action \
-  -H "Authorization: Bearer llmgw_YOUR_KEY_HERE" \
+curl -u admin:password -X POST \
+  http://localhost:8088/system/llm-gateway/action \
   -H "Content-Type: application/json" \
   -d '{
     "correlationId": "550e8400-e29b-41d4-a716-446655440000",
@@ -212,27 +230,29 @@ Tags use the format `[provider]path/to/tag`:
 
 ### Permissions Reference
 
-Permissions use the format `{resource_type}:{action}`:
+Permissions are mapped from Ignition roles. Key permissions include:
 
 | Permission | Description |
 |------------|-------------|
-| `tag:read` | Read tag values and browse tag providers |
-| `tag:create` | Create new tags and folders |
-| `tag:update` | Modify tag values and configuration |
-| `tag:delete` | Delete tags and folders |
-| `view:read` | Read Perspective views |
-| `view:create` | Create new Perspective views |
-| `view:update` | Modify Perspective views |
-| `view:delete` | Delete Perspective views |
-| `script:read` | Read project library scripts |
-| `script:create` | Create new scripts |
-| `script:update` | Modify scripts |
-| `script:delete` | Delete scripts |
-| `named_query:read` | Read named queries |
-| `named_query:create` | Create new named queries |
-| `named_query:update` | Modify named queries |
-| `named_query:delete` | Delete named queries |
-| `project:read` | List and read project information |
+| `ADMIN` | Full access to all operations |
+| `TAG_READ` | Read tag values and browse tag providers |
+| `TAG_CREATE` | Create new tags and folders |
+| `TAG_UPDATE` | Modify tag configuration |
+| `TAG_WRITE_VALUE` | Write values to existing tags |
+| `TAG_DELETE` | Delete tags and folders |
+| `VIEW_READ` | Read Perspective views |
+| `VIEW_CREATE` | Create new Perspective views |
+| `VIEW_UPDATE` | Modify Perspective views |
+| `VIEW_DELETE` | Delete Perspective views |
+| `SCRIPT_READ` | Read project library scripts |
+| `SCRIPT_CREATE` | Create new scripts |
+| `SCRIPT_UPDATE` | Modify scripts |
+| `SCRIPT_DELETE` | Delete scripts |
+| `NAMED_QUERY_READ` | Read named queries |
+| `NAMED_QUERY_CREATE` | Create new named queries |
+| `NAMED_QUERY_UPDATE` | Modify named queries |
+| `NAMED_QUERY_DELETE` | Delete named queries |
+| `PROJECT_READ` | List and read project information |
 
 ### Path Formats
 
@@ -251,8 +271,9 @@ See [SECURITY.md](SECURITY.md) for the complete security model.
 
 ### Key Points
 
-- All operations require authentication (API key or OAuth)
-- Authorization checked against policy engine
+- Uses Ignition's built-in user authentication (Basic Auth)
+- User roles determine module permissions
+- HTTPS required in production (Basic Auth sends credentials in plaintext)
 - Full audit trail with correlation IDs
 - Destructive actions require confirmation in production
 - Dry-run mode for previewing changes
@@ -271,11 +292,12 @@ ignition-llm-gateway/
 │       └── com/inductiveautomation/ignition/gateway/llm/gateway/
 │           ├── api/        # REST endpoints
 │           ├── audit/      # Audit logging
+│           ├── auth/       # Authentication (Basic Auth)
 │           ├── execution/  # Action execution
 │           └── policy/     # Authorization
 ├── build/                  # Module packaging
 │   └── pom.xml            # ignition-maven-plugin config
-├── .claude/               # Claude Code working memory
+├── ignition-mcp-server/   # MCP server for Claude Desktop
 ├── pom.xml               # Parent POM
 └── README.md
 ```

@@ -53,7 +53,6 @@ class ProjectResourceHandlerTest {
         ));
         adminAuth = AuthContext.builder()
                 .userId("admin")
-                .keyId("admin-key")
                 .permissions(adminPerms)
                 .build();
 
@@ -61,21 +60,18 @@ class ProjectResourceHandlerTest {
         Set<Permission> updatePerms = Collections.singleton(Permission.PROJECT_UPDATE);
         updateAuth = AuthContext.builder()
                 .userId("editor")
-                .keyId("editor-key")
                 .permissions(updatePerms)
                 .build();
 
         // Read-only context
         readOnlyAuth = AuthContext.builder()
                 .userId("reader")
-                .keyId("reader-key")
                 .permissions(Collections.emptySet())
                 .build();
 
         // No access context
         noAccessAuth = AuthContext.builder()
                 .userId("guest")
-                .keyId("guest-key")
                 .permissions(Collections.emptySet())
                 .build();
     }

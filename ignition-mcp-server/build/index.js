@@ -5,15 +5,18 @@ import { z } from "zod/v3";
 import { randomUUID } from "crypto";
 // Configuration from environment variables
 const GATEWAY_URL = process.env.IGNITION_GATEWAY_URL || "http://localhost:8088";
-const API_KEY = process.env.IGNITION_API_KEY || "";
-// Helper function to make API requests
+const IGNITION_USERNAME = process.env.IGNITION_USERNAME || "";
+const IGNITION_PASSWORD = process.env.IGNITION_PASSWORD || "";
+// Helper function to make API requests with Basic Auth
 async function callIgnitionAPI(endpoint, method = "GET", body) {
     const url = `${GATEWAY_URL}/system/llm-gateway${endpoint}`;
     const headers = {
         "Content-Type": "application/json",
     };
-    if (API_KEY) {
-        headers["Authorization"] = `Bearer ${API_KEY}`;
+    // Use HTTP Basic Authentication with Ignition credentials
+    if (IGNITION_USERNAME && IGNITION_PASSWORD) {
+        const credentials = Buffer.from(`${IGNITION_USERNAME}:${IGNITION_PASSWORD}`).toString("base64");
+        headers["Authorization"] = `Basic ${credentials}`;
     }
     const response = await fetch(url, {
         method,
@@ -228,10 +231,27 @@ server.tool("read_view", "Read a Perspective view's JSON content", {
     }
 });
 // Create View
-server.tool("create_view", "Create a new Perspective view with a root container", {
+server.tool("create_view", `Create a new Perspective view with a root container.
+
+CONTAINER TYPES:
+- flex: Flexbox layout (most common, recommended for responsive layouts)
+- coord: Absolute positioning (fixed x/y coordinates)
+- breakpoint: Responsive breakpoints for different screen sizes
+
+After creating a view, use update_view to add components.
+
+COMPONENT TYPES REFERENCE:
+- Containers: ia.container.flex, ia.container.coord, ia.container.tab, ia.container.split
+- Display: ia.display.label, ia.display.icon, ia.display.image, ia.display.markdown, ia.display.gauge
+- Input: ia.input.button, ia.input.text-field, ia.input.dropdown, ia.input.checkbox, ia.input.slider
+- Charts: ia.chart.pie, ia.chart.bar, ia.chart.time-series-chart, ia.chart.power-chart
+- Tables: ia.table.table, ia.table.power-table
+- Navigation: ia.navigation.tree, ia.navigation.menu-tree
+
+IMPORTANT: After creation, click File > Update Project in Designer to see the view.`, {
     project: z.string().describe("Project folder name"),
     viewPath: z.string().describe("View path, e.g., Dashboard or Screens/NewView"),
-    containerType: z.enum(["flex", "coordinate", "breakpoint"]).optional().default("flex").describe("Root container type"),
+    containerType: z.enum(["flex", "coord", "breakpoint"]).optional().default("flex").describe("Root container type"),
 }, async ({ project, viewPath, containerType }) => {
     try {
         const payload = {
@@ -253,7 +273,46 @@ server.tool("create_view", "Create a new Perspective view with a root container"
     }
 });
 // Update View
-server.tool("update_view", "Update a Perspective view's content", {
+server.tool("update_view", `Update a Perspective view's content with a new root component structure.
+
+COMPONENT STRUCTURE EXAMPLE:
+{
+  "type": "ia.container.flex",
+  "version": 0,
+  "meta": {"name": "root"},
+  "props": {"direction": "column"},
+  "children": [
+    {
+      "type": "ia.display.label",
+      "version": 0,
+      "meta": {"name": "Title"},
+      "position": {"grow": 0, "shrink": 0, "basis": "auto"},
+      "props": {"text": "My Title", "style": {"fontSize": "24px"}}
+    },
+    {
+      "type": "ia.input.button",
+      "version": 0,
+      "meta": {"name": "SubmitBtn"},
+      "position": {"grow": 0, "shrink": 0, "basis": "auto"},
+      "props": {"text": "Submit"}
+    }
+  ]
+}
+
+REQUIRED for each component:
+- type: Component type (e.g., ia.display.label)
+- version: Always 0
+- meta.name: Unique name within parent
+- position: Layout info (for flex: grow/shrink/basis; for coord: x/y/width/height)
+- props: Component-specific properties
+
+POSITION for flex container children:
+  {"grow": 0, "shrink": 0, "basis": "auto"}
+
+POSITION for coord container children:
+  {"x": 100, "y": 50, "width": 200, "height": 30}
+
+IMPORTANT: After update, click File > Update Project in Designer to see changes.`, {
     project: z.string().describe("Project folder name"),
     viewPath: z.string().describe("View path"),
     root: z.any().describe("The root component JSON to set for the view"),
@@ -486,6 +545,42 @@ server.tool("delete_named_query", "Delete a named query", {
         };
     }
 });
+// Trigger Project Scan
+server.tool("trigger_project_scan", `Trigger a Gateway project resource scan to detect filesystem changes.
+
+Call this after creating or modifying resources via the API to ensure the Gateway
+detects the changes. After the scan completes, use File > Update Project in
+Designer to see the changes.`, {}, async () => {
+    try {
+        const url = `${GATEWAY_URL}/system/llm-gateway-scan/`;
+        const headers = {
+            "Content-Type": "application/json",
+        };
+        // Use HTTP Basic Authentication with Ignition credentials
+        if (IGNITION_USERNAME && IGNITION_PASSWORD) {
+            const credentials = Buffer.from(`${IGNITION_USERNAME}:${IGNITION_PASSWORD}`).toString("base64");
+            headers["Authorization"] = `Basic ${credentials}`;
+        }
+        const response = await fetch(url, {
+            method: "POST",
+            headers,
+        });
+        if (!response.ok) {
+            const error = await response.text();
+            throw new Error(`API Error (${response.status}): ${error}`);
+        }
+        const result = await response.json();
+        return {
+            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+    }
+    catch (error) {
+        return {
+            content: [{ type: "text", text: `Error: ${error}` }],
+            isError: true,
+        };
+    }
+});
 // ============== RESOURCES ==============
 // Gateway Health Resource
 server.resource("gateway-health", "gateway://health", {
@@ -521,7 +616,7 @@ async function main() {
     // Log startup info to stderr (Claude Desktop reads stdout for JSON-RPC)
     console.error("=== Ignition MCP Server ===");
     console.error(`Gateway URL: ${GATEWAY_URL}`);
-    console.error(`API Key: ${API_KEY ? `configured (${API_KEY.slice(0, 10)}...)` : "NOT SET - API calls may fail"}`);
+    console.error(`Auth: ${IGNITION_USERNAME ? `configured for user '${IGNITION_USERNAME}'` : "NOT SET - API calls may fail"}`);
     console.error("");
     // Create stdio transport
     const transport = new StdioServerTransport();
@@ -533,7 +628,7 @@ async function main() {
     console.error("  read_view, create_view, update_view, delete_view, list_scripts,");
     console.error("  read_script, create_script, update_script, delete_script,");
     console.error("  list_named_queries, read_named_query, create_named_query,");
-    console.error("  update_named_query, delete_named_query");
+    console.error("  update_named_query, delete_named_query, trigger_project_scan");
 }
 main().catch((error) => {
     console.error("Fatal error:", error);

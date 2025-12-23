@@ -10,26 +10,47 @@ The LLM Gateway module implements defense-in-depth security with multiple layers
 
 ### 1. Authentication
 
-All requests must include valid credentials:
+All requests must include valid Ignition user credentials using HTTP Basic Authentication:
 
 ```
-Authorization: Bearer <oauth-token>
-# or
-X-API-Key: <api-key>
+Authorization: Basic base64(username:password)
 ```
 
-**API Key Management:**
-- API keys should be generated with strong randomness (256+ bits)
-- Store keys using Ignition's secure credential storage
-- Rotate keys periodically
-- Never log or output API keys
+**Example:**
+```bash
+# Authenticate with Ignition admin user
+curl -u admin:password http://localhost:8088/system/llm-gateway/info
+```
 
-**OAuth Support:**
-- Supports standard Bearer token authentication
-- Validate tokens against configured identity provider
-- Check token expiration and scopes
+**Security Notes:**
+- Credentials are validated against Ignition's configured user sources
+- HTTP Basic Auth sends credentials Base64-encoded (NOT encrypted)
+- **HTTPS is required in production** to protect credentials in transit
+- Ignition's user source handles brute-force protection and account lockout
 
-### 2. Authorization (Policy Engine)
+**User Source Configuration:**
+- By default, authenticates against the "default" user source
+- Supports any configured Ignition user source (LDAP, Active Directory, database-backed, etc.)
+
+### 2. Authorization (Role-Based Access)
+
+User roles are mapped to module permissions:
+
+| Ignition Role | Module Permissions |
+|---------------|-------------------|
+| Administrator | Full access (ADMIN) |
+| Developer | All CRUD operations on resources |
+| Operator | Read/write for tags, read-only for views |
+| Viewer/Default | Read-only access |
+
+**Role Mapping Details:**
+
+- **Administrator**: Grants `ADMIN` permission, which implicitly allows all operations
+- **Developer**: TAG_*, VIEW_*, SCRIPT_*, NAMED_QUERY_*, PROJECT_READ
+- **Operator**: TAG_READ, TAG_WRITE_VALUE, VIEW_READ, PROJECT_READ
+- **Viewer**: READ_ALL (all read permissions)
+
+### 3. Policy Engine
 
 The policy engine evaluates every request against:
 
@@ -46,9 +67,9 @@ The policy engine evaluates every request against:
 | Test        | Yes  | Yes    | Yes    | Confirm |
 | Production  | Yes  | No*    | No*    | No*    |
 
-*Requires explicit policy grant
+*Requires explicit policy grant or Administrator role
 
-### 3. Input Validation
+### 4. Input Validation
 
 All action requests are validated before execution:
 
@@ -57,7 +78,7 @@ All action requests are validated before execution:
 - **Path Validation** - No path traversal (`..`, `//`)
 - **Payload Size Limits** - Maximum 10MB per request
 
-### 4. Destructive Action Safeguards
+### 5. Destructive Action Safeguards
 
 Destructive operations (delete, replace) require additional safeguards:
 
@@ -66,7 +87,7 @@ Destructive operations (delete, replace) require additional safeguards:
 3. **Audit Warning** - Logged with elevated severity
 4. **Rollback Information** - Response includes undo instructions when possible
 
-### 5. Audit Logging
+### 6. Audit Logging
 
 All operations are logged to an append-only audit trail:
 
@@ -77,7 +98,8 @@ All operations are logged to an append-only audit trail:
   "timestamp": "2024-01-15T10:30:00Z",
   "category": "LLM_ACTION",
   "eventType": "ACTION_REQUEST",
-  "userId": "api-user-123",
+  "userId": "admin",
+  "userSource": "default",
   "resourceType": "tag",
   "resourcePath": "TagProvider/Folder/MyTag",
   "actionType": "update",
@@ -91,7 +113,7 @@ All operations are logged to an append-only audit trail:
 - `LLM_POLICY` - Policy decisions
 - `LLM_SYSTEM` - System events (startup, shutdown, config)
 
-### 6. Correlation IDs
+### 7. Correlation IDs
 
 Every request must include a unique correlation ID (UUID v4):
 
@@ -102,8 +124,8 @@ Every request must include a unique correlation ID (UUID v4):
 ## Secrets Management
 
 **Never expose:**
-- API keys in logs or responses
-- LLM provider credentials
+- Ignition user passwords in logs or responses
+- LLM provider API keys
 - Database connection strings
 - Internal system paths
 
@@ -114,15 +136,15 @@ Every request must include a unique correlation ID (UUID v4):
 
 ## Network Security
 
-**Recommendations:**
-- Enable HTTPS for all Gateway traffic
+**Requirements for Production:**
+- **HTTPS is mandatory** - Basic Auth sends credentials in plaintext
 - Use valid SSL certificates (not self-signed in production)
 - Configure firewall rules to limit access
 - Consider API gateway/reverse proxy for additional controls
 
 ## Rate Limiting
 
-Implement rate limiting to prevent abuse:
+Rate limiting prevents abuse:
 
 - Per-user request limits
 - Per-resource operation limits
@@ -133,7 +155,7 @@ Implement rate limiting to prevent abuse:
 **If a security incident is suspected:**
 
 1. Check audit logs for anomalous activity
-2. Revoke compromised API keys immediately
+2. Disable compromised user accounts immediately
 3. Review policy engine decisions
 4. Analyze correlation context for related actions
 5. Document incident and remediation
@@ -142,8 +164,8 @@ Implement rate limiting to prevent abuse:
 
 Before deploying to production:
 
-- [ ] HTTPS enabled with valid certificate
-- [ ] API keys rotated from development values
+- [ ] HTTPS enabled with valid certificate (required for Basic Auth)
+- [ ] User accounts configured with strong passwords
 - [ ] Environment mode set to `production`
 - [ ] Audit logging enabled and monitored
 - [ ] Rate limiting configured

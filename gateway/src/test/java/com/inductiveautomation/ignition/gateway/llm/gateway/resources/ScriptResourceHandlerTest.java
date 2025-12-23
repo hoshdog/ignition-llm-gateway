@@ -53,7 +53,6 @@ class ScriptResourceHandlerTest {
         ));
         fullAccessAuth = AuthContext.builder()
                 .userId("admin")
-                .keyId("admin-key")
                 .permissions(fullPerms)
                 .build();
 
@@ -61,14 +60,12 @@ class ScriptResourceHandlerTest {
         Set<Permission> readPerms = Collections.singleton(Permission.SCRIPT_READ);
         readOnlyAuth = AuthContext.builder()
                 .userId("reader")
-                .keyId("reader-key")
                 .permissions(readPerms)
                 .build();
 
         // No access context
         noAccessAuth = AuthContext.builder()
                 .userId("guest")
-                .keyId("guest-key")
                 .permissions(Collections.emptySet())
                 .build();
     }

@@ -5,12 +5,30 @@ info:
     API for LLM-powered management of Ignition Gateway resources.
 
     ## Authentication
-    All endpoints (except /health) require authentication via API key:
-    - Header: `Authorization: Bearer llmgw_xxxxx`
-    - Header: `X-API-Key: llmgw_xxxxx`
+    All endpoints (except /health and OpenAPI specs) require HTTP Basic Authentication
+    using Ignition user credentials:
+
+    ```
+    Authorization: Basic base64(username:password)
+    ```
+
+    Or use curl's `-u` option:
+    ```bash
+    curl -u admin:password http://localhost:8088/system/llm-gateway/info
+    ```
+
+    **Security Note:** Basic Auth sends credentials Base64-encoded (not encrypted).
+    Use HTTPS in production environments.
+
+    ## Role-Based Access
+    User roles from Ignition's user sources are mapped to module permissions:
+    - Administrator: Full access (all operations)
+    - Developer: Full CRUD on all resource types
+    - Operator: Read/write tags, read-only views
+    - Viewer/Default: Read-only access
 
     ## Rate Limiting
-    Requests are rate-limited per API key. Check response headers:
+    Requests are rate-limited per user. Check response headers:
     - `X-RateLimit-Remaining-Requests`
     - `X-RateLimit-Remaining-Tokens`
     - `Retry-After` (on 429 responses)
@@ -27,12 +45,11 @@ info:
     name: LLM Gateway Module
 
 servers:
-  - url: /system/llm-gateway/api/v1
+  - url: /system/llm-gateway
     description: Gateway API endpoint
 
 security:
-  - BearerAuth: []
-  - ApiKeyHeader: []
+  - BasicAuth: []
 
 paths:
   /health:
@@ -260,17 +277,130 @@ paths:
               schema:
                 type: object
 
+  /admin/providers:
+    get:
+      summary: List LLM providers (admin)
+      description: List available LLM providers and their configuration status
+      operationId: listProviders
+      responses:
+        '200':
+          description: Provider list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  providers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        available:
+                          type: boolean
+                        configured:
+                          type: boolean
+                        toolSupport:
+                          type: string
+                  defaultProvider:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/providers/{providerId}/config:
+    post:
+      summary: Configure an LLM provider (admin)
+      description: Configure an LLM provider with API key and settings
+      operationId: configureProvider
+      parameters:
+        - name: providerId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                apiKey:
+                  type: string
+                  description: API key for the provider
+                enabled:
+                  type: boolean
+                defaultModel:
+                  type: string
+                apiBaseUrl:
+                  type: string
+                maxTokens:
+                  type: integer
+                temperature:
+                  type: number
+      responses:
+        '200':
+          description: Provider configured
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  providerId:
+                    type: string
+                  available:
+                    type: boolean
+                  message:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/roles:
+    get:
+      summary: List role mappings (admin)
+      description: List the current role-to-permission mappings
+      operationId: listRoles
+      responses:
+        '200':
+          description: Role mappings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  roleMappings:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        role:
+                          type: string
+                        permissions:
+                          type: array
+                          items:
+                            type: string
+                  userSource:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
 components:
   securitySchemes:
-    BearerAuth:
+    BasicAuth:
       type: http
-      scheme: bearer
-      description: API key as Bearer token
-    ApiKeyHeader:
-      type: apiKey
-      in: header
-      name: X-API-Key
-      description: API key in custom header
+      scheme: basic
+      description: HTTP Basic Authentication using Ignition user credentials
 
   schemas:
     ChatRequest:
@@ -383,13 +513,16 @@ components:
       properties:
         status:
           type: string
-          enum: [healthy, unhealthy]
+          enum: [healthy, unhealthy, initializing]
         module:
           type: string
         version:
           type: string
         environmentMode:
           type: string
+        authentication:
+          type: string
+          example: "Basic Auth (Ignition user credentials)"
         timestamp:
           type: string
           format: date-time
@@ -409,6 +542,10 @@ components:
             type: string
         user:
           type: string
+          description: Authenticated username
+        userSource:
+          type: string
+          description: Ignition user source that authenticated the user
         permissions:
           type: array
           items:
@@ -426,6 +563,9 @@ components:
           type: string
         correlationId:
           type: string
+        hint:
+          type: string
+          description: Help text for resolving the error
         timestamp:
           type: string
           format: date-time
@@ -433,6 +573,11 @@ components:
   responses:
     Unauthorized:
       description: Authentication failed
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+            example: 'Basic realm="Ignition LLM Gateway"'
       content:
         application/json:
           schema:
@@ -447,6 +592,9 @@ components:
                 type: string
               correlationId:
                 type: string
+              hint:
+                type: string
+                example: "Use HTTP Basic auth with Ignition user credentials: -u username:password"
 
     Forbidden:
       description: Permission denied

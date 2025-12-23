@@ -7,9 +7,10 @@ import { randomUUID } from "crypto";
 
 // Configuration from environment variables
 const GATEWAY_URL = process.env.IGNITION_GATEWAY_URL || "http://localhost:8088";
-const API_KEY = process.env.IGNITION_API_KEY || "";
+const IGNITION_USERNAME = process.env.IGNITION_USERNAME || "";
+const IGNITION_PASSWORD = process.env.IGNITION_PASSWORD || "";
 
-// Helper function to make API requests
+// Helper function to make API requests with Basic Auth
 async function callIgnitionAPI(
   endpoint: string,
   method: string = "GET",
@@ -21,8 +22,10 @@ async function callIgnitionAPI(
     "Content-Type": "application/json",
   };
 
-  if (API_KEY) {
-    headers["Authorization"] = `Bearer ${API_KEY}`;
+  // Use HTTP Basic Authentication with Ignition credentials
+  if (IGNITION_USERNAME && IGNITION_PASSWORD) {
+    const credentials = Buffer.from(`${IGNITION_USERNAME}:${IGNITION_PASSWORD}`).toString("base64");
+    headers["Authorization"] = `Basic ${credentials}`;
   }
 
   const response = await fetch(url, {
@@ -691,8 +694,10 @@ Designer to see the changes.`,
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
-      if (API_KEY) {
-        headers["Authorization"] = `Bearer ${API_KEY}`;
+      // Use HTTP Basic Authentication with Ignition credentials
+      if (IGNITION_USERNAME && IGNITION_PASSWORD) {
+        const credentials = Buffer.from(`${IGNITION_USERNAME}:${IGNITION_PASSWORD}`).toString("base64");
+        headers["Authorization"] = `Basic ${credentials}`;
       }
 
       const response = await fetch(url, {
@@ -760,7 +765,7 @@ async function main() {
   // Log startup info to stderr (Claude Desktop reads stdout for JSON-RPC)
   console.error("=== Ignition MCP Server ===");
   console.error(`Gateway URL: ${GATEWAY_URL}`);
-  console.error(`API Key: ${API_KEY ? `configured (${API_KEY.slice(0, 10)}...)` : "NOT SET - API calls may fail"}`);
+  console.error(`Auth: ${IGNITION_USERNAME ? `configured for user '${IGNITION_USERNAME}'` : "NOT SET - API calls may fail"}`);
   console.error("");
 
   // Create stdio transport

@@ -1,6 +1,9 @@
 package com.inductiveautomation.ignition.gateway.llm.gateway.auth;
 
+import com.inductiveautomation.ignition.common.user.AuthenticatedUser;
+
 import java.time.Instant;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -10,12 +13,15 @@ import java.util.Set;
 /**
  * Represents an authenticated session context.
  * Created after successful authentication and used for authorization decisions.
+ *
+ * <p>This context is created by {@link BasicAuthenticationService} after
+ * validating credentials against Ignition's user management system.</p>
  */
 public final class AuthContext {
 
     private final String userId;
-    private final String keyId;
-    private final String keyName;
+    private final String userName;
+    private final String userSource;
     private final Set<Permission> permissions;
     private final Instant authenticatedAt;
     private final String clientAddress;
@@ -23,30 +29,48 @@ public final class AuthContext {
 
     private AuthContext(Builder builder) {
         this.userId = Objects.requireNonNull(builder.userId, "userId cannot be null");
-        this.keyId = builder.keyId;
-        this.keyName = builder.keyName;
+        this.userName = builder.userName;
+        this.userSource = builder.userSource;
         this.permissions = Collections.unmodifiableSet(builder.permissions);
         this.authenticatedAt = builder.authenticatedAt != null ? builder.authenticatedAt : Instant.now();
         this.clientAddress = builder.clientAddress;
         this.attributes = Collections.unmodifiableMap(new HashMap<>(builder.attributes));
     }
 
+    /**
+     * Returns the user ID (typically the username used for authentication).
+     */
     public String getUserId() {
         return userId;
     }
 
-    public String getKeyId() {
-        return keyId;
+    /**
+     * Returns the display name of the user (may be different from userId).
+     */
+    public String getUserName() {
+        return userName != null ? userName : userId;
     }
 
-    public String getKeyName() {
-        return keyName;
+    /**
+     * Returns the Ignition user source profile used for authentication.
+     */
+    public String getUserSource() {
+        return userSource;
     }
 
+    /**
+     * Returns the set of permissions granted to this user.
+     */
     public Set<Permission> getPermissions() {
         return permissions;
     }
 
+    /**
+     * Checks if this context has the specified permission.
+     *
+     * <p>ADMIN permission grants access to everything.
+     * READ_ALL permission grants access to any *_READ permission.</p>
+     */
     public boolean hasPermission(Permission permission) {
         if (permissions.contains(Permission.ADMIN)) {
             return true;
@@ -57,10 +81,16 @@ public final class AuthContext {
         return permissions.contains(permission);
     }
 
+    /**
+     * Checks if this user has administrative access.
+     */
     public boolean isAdmin() {
         return permissions.contains(Permission.ADMIN);
     }
 
+    /**
+     * Checks if this context only allows dry-run operations.
+     */
     public boolean isDryRunOnly() {
         return permissions.contains(Permission.DRY_RUN_ONLY);
     }
@@ -90,24 +120,29 @@ public final class AuthContext {
     }
 
     /**
-     * Gets the API key prefix (first characters of the key ID).
+     * Returns when this context was created/authenticated.
      */
-    public String getKeyPrefix() {
-        return keyId != null && keyId.length() >= 8 ? keyId.substring(0, 8) : keyId;
-    }
-
     public Instant getAuthenticatedAt() {
         return authenticatedAt;
     }
 
+    /**
+     * Returns the client IP address.
+     */
     public String getClientAddress() {
         return clientAddress;
     }
 
+    /**
+     * Returns additional attributes attached to this context.
+     */
     public Map<String, Object> getAttributes() {
         return attributes;
     }
 
+    /**
+     * Gets a specific attribute by key.
+     */
     @SuppressWarnings("unchecked")
     public <T> T getAttribute(String key) {
         return (T) attributes.get(key);
@@ -117,10 +152,9 @@ public final class AuthContext {
      * Creates a string suitable for audit logging.
      */
     public String toAuditString() {
-        return String.format("user=%s, key=%s (%s), from=%s",
+        return String.format("user=%s, source=%s, from=%s",
                 userId,
-                keyName != null ? keyName : "unknown",
-                keyId != null ? keyId.substring(0, 8) + "..." : "none",
+                userSource != null ? userSource : "unknown",
                 clientAddress != null ? clientAddress : "unknown");
     }
 
@@ -128,7 +162,8 @@ public final class AuthContext {
     public String toString() {
         return "AuthContext{" +
                 "userId='" + userId + '\'' +
-                ", keyName='" + keyName + '\'' +
+                ", userName='" + userName + '\'' +
+                ", userSource='" + userSource + '\'' +
                 ", permissions=" + permissions.size() +
                 ", clientAddress='" + clientAddress + '\'' +
                 '}';
@@ -152,8 +187,8 @@ public final class AuthContext {
 
     public static class Builder {
         private String userId;
-        private String keyId;
-        private String keyName;
+        private String userName;
+        private String userSource;
         private Set<Permission> permissions = Collections.emptySet();
         private Instant authenticatedAt;
         private String clientAddress;
@@ -164,13 +199,13 @@ public final class AuthContext {
             return this;
         }
 
-        public Builder keyId(String keyId) {
-            this.keyId = keyId;
+        public Builder userName(String userName) {
+            this.userName = userName;
             return this;
         }
 
-        public Builder keyName(String keyName) {
-            this.keyName = keyName;
+        public Builder userSource(String userSource) {
+            this.userSource = userSource;
             return this;
         }
 
@@ -200,13 +235,17 @@ public final class AuthContext {
         }
 
         /**
-         * Creates an AuthContext from an ApiKey.
+         * Populates the builder from an Ignition AuthenticatedUser.
+         *
+         * @param user The authenticated user from Ignition's user source
+         * @param userSourceProfile The user source profile name used for authentication
+         * @return This builder
          */
-        public Builder fromApiKey(ApiKey apiKey) {
-            this.keyId = apiKey.getId();
-            this.keyName = apiKey.getName();
-            this.permissions = apiKey.getPermissions();
-            this.userId = "api-key:" + apiKey.getName();
+        public Builder fromIgnitionUser(AuthenticatedUser user, String userSourceProfile) {
+            this.userId = user.getUsername();
+            // AuthenticatedUser may have a display name
+            this.userName = user.getUsername(); // Could use user.get("firstName") etc. if available
+            this.userSource = userSourceProfile;
             return this;
         }
 

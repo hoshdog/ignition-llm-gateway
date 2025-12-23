@@ -458,8 +458,8 @@ public class ScriptResourceHandler implements ResourceHandler {
      * Logs a security event to the audit log.
      */
     private void logSecurityEvent(String eventType, String details, AuthContext auth) {
-        logger.warn("[SECURITY] {} - {} - user={}, key={}",
-                eventType, details, auth.getUserId(), auth.getKeyPrefix());
+        logger.warn("[SECURITY] {} - {} - user={}, source={}",
+                eventType, details, auth.getUserId(), auth.getUserSource());
         // Also log to audit
         auditLogger.logSystemEvent(eventType,
                 details + " by " + auth.getUserId(),

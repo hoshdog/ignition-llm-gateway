@@ -3,8 +3,7 @@ package com.inductiveautomation.ignition.gateway.llm.gateway;
 import com.inductiveautomation.ignition.gateway.model.GatewayContext;
 import com.inductiveautomation.ignition.gateway.llm.common.LLMGatewayConstants;
 import com.inductiveautomation.ignition.gateway.llm.gateway.audit.AuditLogger;
-import com.inductiveautomation.ignition.gateway.llm.gateway.auth.ApiKeyManager;
-import com.inductiveautomation.ignition.gateway.llm.gateway.auth.AuthenticationService;
+import com.inductiveautomation.ignition.gateway.llm.gateway.auth.BasicAuthenticationService;
 import com.inductiveautomation.ignition.gateway.llm.gateway.conversation.ConversationManager;
 import com.inductiveautomation.ignition.gateway.llm.gateway.execution.ActionExecutor;
 import com.inductiveautomation.ignition.gateway.llm.gateway.policy.EnvironmentMode;
@@ -30,8 +29,7 @@ public class LLMGatewayContext {
     private final GatewayContext gatewayContext;
     private final AuditLogger auditLogger;
     private final PolicyEngine policyEngine;
-    private final ApiKeyManager apiKeyManager;
-    private final AuthenticationService authenticationService;
+    private final BasicAuthenticationService authenticationService;
     private final ActionExecutor actionExecutor;
     private final LLMProviderFactory providerFactory;
     private final ConversationManager conversationManager;
@@ -53,10 +51,9 @@ public class LLMGatewayContext {
         this.policyEngine = new PolicyEngine(environmentMode);
         logger.debug("Policy engine initialized");
 
-        // Initialize authentication services
-        this.apiKeyManager = new ApiKeyManager();
-        this.authenticationService = new AuthenticationService(apiKeyManager);
-        logger.debug("Authentication services initialized");
+        // Initialize authentication service using Ignition's user management
+        this.authenticationService = new BasicAuthenticationService(gatewayContext);
+        logger.debug("Basic authentication service initialized");
 
         // Create executor service for async operations
         this.executorService = Executors.newFixedThreadPool(
@@ -123,16 +120,9 @@ public class LLMGatewayContext {
     }
 
     /**
-     * Returns the API key manager.
-     */
-    public ApiKeyManager getApiKeyManager() {
-        return apiKeyManager;
-    }
-
-    /**
      * Returns the authentication service.
      */
-    public AuthenticationService getAuthenticationService() {
+    public BasicAuthenticationService getAuthenticationService() {
         return authenticationService;
     }
 

@@ -34,7 +34,15 @@
       "Bash(git init:*)",
       "Bash(gh auth:*)",
       "Bash(git add:*)",
-      "Bash(git reset:*)"
+      "Bash(git reset:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nInitial commit: Ignition LLM Gateway Module v1.0.0\n\nA production-ready Ignition Gateway module providing a secure REST API\nfor LLM-driven CRUD operations on Ignition resources.\n\nFeatures:\n- Complete CRUD for Perspective views, scripts, named queries, and tags\n- API key authentication with rate limiting\n- Immutable audit logging with correlation IDs\n- Security scanning for scripts and SQL\n- MCP server for Claude Desktop integration \\(25 tools\\)\n\nResource handler fixes:\n- Fixed scope from \"G\" to \"A\" for Designer visibility\n- Added defaultSize to view props\n- Fixed timestamp format to ISO with \"Z\" suffix\n- Added project resource scan trigger\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(gh repo create:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(del \"C:\\\\Users\\\\HoshitoPowell\\\\Desktop\\\\Ignition Gateway LLM Module\\\\gateway\\\\src\\\\main\\\\java\\\\com\\\\inductiveautomation\\\\ignition\\\\gateway\\\\llm\\\\gateway\\\\auth\\\\ApiKey.java\")",
+      "Bash(del \"C:\\\\Users\\\\HoshitoPowell\\\\Desktop\\\\Ignition Gateway LLM Module\\\\gateway\\\\src\\\\main\\\\java\\\\com\\\\inductiveautomation\\\\ignition\\\\gateway\\\\llm\\\\gateway\\\\auth\\\\ApiKeyManager.java\")",
+      "Bash(del \"C:\\\\Users\\\\HoshitoPowell\\\\Desktop\\\\Ignition Gateway LLM Module\\\\gateway\\\\src\\\\main\\\\java\\\\com\\\\inductiveautomation\\\\ignition\\\\gateway\\\\llm\\\\gateway\\\\auth\\\\AuthenticationService.java\")",
+      "Bash(del \"C:\\\\Users\\\\HoshitoPowell\\\\Desktop\\\\Ignition Gateway LLM Module\\\\gateway\\\\src\\\\test\\\\java\\\\com\\\\inductiveautomation\\\\ignition\\\\gateway\\\\llm\\\\gateway\\\\auth\\\\ApiKeyManagerTest.java\")"
     ]
   }
 }

@@ -35,36 +35,36 @@ class RateLimiterTest {
 
     @Test
     void testCheckLimit_allowedRequest() {
-        RateLimitResult result = rateLimiter.checkLimit("api-key-1", 100);
+        RateLimitResult result = rateLimiter.checkLimit("user-1", 100);
         assertTrue(result.isAllowed());
     }
 
     @Test
     void testCheckLimit_remainingRequestsDecrease() {
-        RateLimitResult first = rateLimiter.checkLimit("api-key-1", 100);
+        RateLimitResult first = rateLimiter.checkLimit("user-1", 100);
         assertTrue(first.isAllowed());
         int firstRemaining = first.getRemainingRequests();
 
-        RateLimitResult second = rateLimiter.checkLimit("api-key-1", 100);
+        RateLimitResult second = rateLimiter.checkLimit("user-1", 100);
         assertTrue(second.isAllowed());
         assertEquals(firstRemaining - 1, second.getRemainingRequests());
     }
 
     @Test
     void testCheckLimit_remainingTokensDecrease() {
-        RateLimitResult first = rateLimiter.checkLimit("api-key-1", 100);
+        RateLimitResult first = rateLimiter.checkLimit("user-1", 100);
         assertTrue(first.isAllowed());
         int firstTokens = first.getRemainingTokens();
 
-        RateLimitResult second = rateLimiter.checkLimit("api-key-1", 200);
+        RateLimitResult second = rateLimiter.checkLimit("user-1", 200);
         assertTrue(second.isAllowed());
         assertEquals(firstTokens - 200, second.getRemainingTokens());
     }
 
     @Test
-    void testCheckLimit_separateBucketsPerApiKey() {
-        RateLimitResult result1 = rateLimiter.checkLimit("api-key-1", 500);
-        RateLimitResult result2 = rateLimiter.checkLimit("api-key-2", 500);
+    void testCheckLimit_separateBucketsPerUser() {
+        RateLimitResult result1 = rateLimiter.checkLimit("user-1", 500);
+        RateLimitResult result2 = rateLimiter.checkLimit("user-2", 500);
 
         assertTrue(result1.isAllowed());
         assertTrue(result2.isAllowed());
@@ -79,12 +79,12 @@ class RateLimiterTest {
     void testCheckLimit_requestLimitExceeded() {
         // Config: 10 requests + 2 burst = 12 total
         for (int i = 0; i < 12; i++) {
-            RateLimitResult result = rateLimiter.checkLimit("api-key-1", 10);
+            RateLimitResult result = rateLimiter.checkLimit("user-1", 10);
             assertTrue(result.isAllowed(), "Request " + i + " should be allowed");
         }
 
         // 13th request should be denied
-        RateLimitResult denied = rateLimiter.checkLimit("api-key-1", 10);
+        RateLimitResult denied = rateLimiter.checkLimit("user-1", 10);
         assertFalse(denied.isAllowed());
         assertEquals(0, denied.getRemainingRequests());
         assertNotNull(denied.getMessage());
@@ -95,10 +95,10 @@ class RateLimiterTest {
     void testCheckLimit_requestLimitReturnsResetTime() {
         // Exhaust requests
         for (int i = 0; i < 12; i++) {
-            rateLimiter.checkLimit("api-key-1", 10);
+            rateLimiter.checkLimit("user-1", 10);
         }
 
-        RateLimitResult denied = rateLimiter.checkLimit("api-key-1", 10);
+        RateLimitResult denied = rateLimiter.checkLimit("user-1", 10);
         assertFalse(denied.isAllowed());
         assertNotNull(denied.getResetTime());
         assertTrue(denied.getSecondsUntilReset() > 0);
@@ -111,7 +111,7 @@ class RateLimiterTest {
     void testCheckLimit_tokenLimitExceeded() {
         // Config: 1000 tokens per minute
         // Request more tokens than available
-        RateLimitResult denied = rateLimiter.checkLimit("api-key-1", 2000);
+        RateLimitResult denied = rateLimiter.checkLimit("user-1", 2000);
         assertFalse(denied.isAllowed());
         assertTrue(denied.getMessage().contains("Token rate limit"));
     }
@@ -120,16 +120,16 @@ class RateLimiterTest {
     void testCheckLimit_tokenLimitGradualExhaustion() {
         // Use up tokens gradually
         for (int i = 0; i < 9; i++) {
-            RateLimitResult result = rateLimiter.checkLimit("api-key-1", 100);
+            RateLimitResult result = rateLimiter.checkLimit("user-1", 100);
             assertTrue(result.isAllowed());
         }
 
         // 900 tokens used, 100 remaining
-        RateLimitResult remaining = rateLimiter.getStatus("api-key-1");
+        RateLimitResult remaining = rateLimiter.getStatus("user-1");
         assertEquals(100, remaining.getRemainingTokens());
 
         // Request 200 more tokens - should fail
-        RateLimitResult denied = rateLimiter.checkLimit("api-key-1", 200);
+        RateLimitResult denied = rateLimiter.checkLimit("user-1", 200);
         assertFalse(denied.isAllowed());
     }
 
@@ -138,29 +138,29 @@ class RateLimiterTest {
     @Test
     void testRecordUsage_adjustsTokens() {
         // Request with estimated 500 tokens
-        RateLimitResult before = rateLimiter.checkLimit("api-key-1", 500);
+        RateLimitResult before = rateLimiter.checkLimit("user-1", 500);
         assertTrue(before.isAllowed());
         int tokensAfterEstimate = before.getRemainingTokens();
 
         // Actual usage was only 300 tokens
-        rateLimiter.recordUsage("api-key-1", 300);
+        rateLimiter.recordUsage("user-1", 300);
 
         // Should have 200 tokens back
-        RateLimitResult after = rateLimiter.getStatus("api-key-1");
+        RateLimitResult after = rateLimiter.getStatus("user-1");
         assertEquals(tokensAfterEstimate + 200, after.getRemainingTokens());
     }
 
     @Test
     void testRecordUsage_noAdjustmentIfActualHigher() {
         // Request with estimated 500 tokens
-        RateLimitResult before = rateLimiter.checkLimit("api-key-1", 500);
+        RateLimitResult before = rateLimiter.checkLimit("user-1", 500);
         int tokensAfterEstimate = before.getRemainingTokens();
 
         // Actual usage was higher - no refund
-        rateLimiter.recordUsage("api-key-1", 600);
+        rateLimiter.recordUsage("user-1", 600);
 
         // Tokens should not increase (difference is negative)
-        RateLimitResult after = rateLimiter.getStatus("api-key-1");
+        RateLimitResult after = rateLimiter.getStatus("user-1");
         assertEquals(tokensAfterEstimate, after.getRemainingTokens());
     }
 
@@ -173,20 +173,20 @@ class RateLimiterTest {
     // ========== Get Status Tests ==========
 
     @Test
-    void testGetStatus_newApiKey() {
-        RateLimitResult status = rateLimiter.getStatus("new-api-key");
+    void testGetStatus_newUser() {
+        RateLimitResult status = rateLimiter.getStatus("new-user");
         assertTrue(status.isAllowed());
         assertEquals(testConfig.getRequestsPerMinute(), status.getRemainingRequests());
         assertEquals(testConfig.getTokensPerMinute(), status.getRemainingTokens());
     }
 
     @Test
-    void testGetStatus_existingApiKey() {
+    void testGetStatus_existingUser() {
         // Make some requests first
-        rateLimiter.checkLimit("api-key-1", 100);
-        rateLimiter.checkLimit("api-key-1", 200);
+        rateLimiter.checkLimit("user-1", 100);
+        rateLimiter.checkLimit("user-1", 200);
 
-        RateLimitResult status = rateLimiter.getStatus("api-key-1");
+        RateLimitResult status = rateLimiter.getStatus("user-1");
         assertTrue(status.isAllowed());
         // Should reflect usage
         assertTrue(status.getRemainingRequests() < testConfig.getRequestsPerMinute() + testConfig.getBurstAllowance());
@@ -291,7 +291,7 @@ class RateLimiterTest {
     @Test
     void testBurstAllowance_included() {
         // Config: 10 requests + 2 burst = 12 total initially available
-        RateLimitResult first = rateLimiter.checkLimit("api-key-1", 10);
+        RateLimitResult first = rateLimiter.checkLimit("user-1", 10);
         assertTrue(first.isAllowed());
         assertEquals(11, first.getRemainingRequests()); // 12 - 1
     }
@@ -311,7 +311,7 @@ class RateLimiterTest {
 
     @Test
     void testCheckLimit_zeroTokens() {
-        RateLimitResult result = rateLimiter.checkLimit("api-key-1", 0);
+        RateLimitResult result = rateLimiter.checkLimit("user-1", 0);
         assertTrue(result.isAllowed());
         // Tokens should not decrease
         assertEquals(testConfig.getTokensPerMinute(), result.getRemainingTokens());
@@ -320,27 +320,27 @@ class RateLimiterTest {
     @Test
     void testCheckLimit_exactTokenLimit() {
         // Request exactly the limit
-        RateLimitResult result = rateLimiter.checkLimit("api-key-1", 1000);
+        RateLimitResult result = rateLimiter.checkLimit("user-1", 1000);
         assertTrue(result.isAllowed());
         assertEquals(0, result.getRemainingTokens());
 
         // Next request should fail
-        RateLimitResult denied = rateLimiter.checkLimit("api-key-1", 1);
+        RateLimitResult denied = rateLimiter.checkLimit("user-1", 1);
         assertFalse(denied.isAllowed());
     }
 
     @Test
-    void testCheckLimit_multipleApiKeys() {
-        String[] keys = {"key-1", "key-2", "key-3"};
+    void testCheckLimit_multipleUsers() {
+        String[] users = {"user-1", "user-2", "user-3"};
 
-        for (String key : keys) {
-            RateLimitResult result = rateLimiter.checkLimit(key, 100);
+        for (String user : users) {
+            RateLimitResult result = rateLimiter.checkLimit(user, 100);
             assertTrue(result.isAllowed());
         }
 
         // All should still have plenty of capacity
-        for (String key : keys) {
-            RateLimitResult status = rateLimiter.getStatus(key);
+        for (String user : users) {
+            RateLimitResult status = rateLimiter.getStatus(user);
             assertEquals(testConfig.getTokensPerMinute() - 100, status.getRemainingTokens());
         }
     }
@@ -353,7 +353,7 @@ class RateLimiterTest {
         for (int i = 0; i < 5; i++) {
             final int idx = i;
             threads[i] = new Thread(() -> {
-                RateLimitResult result = rateLimiter.checkLimit("concurrent-key", 100);
+                RateLimitResult result = rateLimiter.checkLimit("concurrent-user", 100);
                 results[idx] = result.isAllowed();
             });
         }
@@ -372,7 +372,7 @@ class RateLimiterTest {
         }
 
         // Total usage should be 500 tokens
-        RateLimitResult status = rateLimiter.getStatus("concurrent-key");
+        RateLimitResult status = rateLimiter.getStatus("concurrent-user");
         assertEquals(500, status.getRemainingTokens());
     }
 }
