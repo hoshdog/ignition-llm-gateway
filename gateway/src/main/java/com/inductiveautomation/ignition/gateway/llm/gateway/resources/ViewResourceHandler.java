@@ -1,6 +1,7 @@
 package com.inductiveautomation.ignition.gateway.llm.gateway.resources;
 
 import com.inductiveautomation.ignition.gateway.model.GatewayContext;
+import com.inductiveautomation.ignition.gateway.project.ProjectManager;
 import com.inductiveautomation.ignition.gateway.llm.actions.CreateResourceAction;
 import com.inductiveautomation.ignition.gateway.llm.actions.DeleteResourceAction;
 import com.inductiveautomation.ignition.gateway.llm.actions.ReadResourceAction;
@@ -420,50 +421,27 @@ public class ViewResourceHandler implements ResourceHandler {
     }
 
     /**
-     * Attempts to trigger a project resource scan for immediate visibility.
-     * This helps the Gateway detect new file-based resources.
+     * Triggers a project resource scan using the official ProjectManager API.
+     * This causes the Gateway to detect file-based resource changes.
      *
-     * @param projectName The project to scan
+     * @param projectName The project to scan (currently unused, but kept for API compatibility)
      * @return true if scan was triggered successfully, false otherwise
      */
     private boolean triggerProjectResourceScan(String projectName) {
         try {
-            // Try to use the ScriptManager to call system.project.requestScan()
-            // This is the recommended way to trigger immediate resource detection
-            Object scriptManager = gatewayContext.getClass().getMethod("getScriptManager").invoke(gatewayContext);
-            if (scriptManager != null) {
-                // Try to execute the scan request
-                logger.info("Attempting to trigger project resource scan for: {}", projectName);
-
-                // Use reflection to call the system.project.requestScan() function
-                // This is equivalent to calling it from Gateway scripting context
-                try {
-                    Class<?> systemFunctionsClass = Class.forName("com.inductiveautomation.ignition.common.script.builtin.SystemUtilities");
-                    java.lang.reflect.Method requestScanMethod = systemFunctionsClass.getMethod("requestScan");
-                    requestScanMethod.invoke(null);
-                    logger.info("Project resource scan triggered successfully");
-                    return true;
-                } catch (ClassNotFoundException | NoSuchMethodException e) {
-                    logger.debug("Could not find system.project.requestScan via reflection: {}", e.getMessage());
-                }
-            }
-        } catch (Exception e) {
-            logger.debug("Could not trigger project resource scan: {}", e.getMessage());
-        }
-
-        // Alternative approach: Try to use ProjectManager to notify of changes
-        try {
-            Object projectManager = gatewayContext.getProjectManager();
+            ProjectManager projectManager = gatewayContext.getProjectManager();
             if (projectManager != null) {
-                // Some versions have a requestScan or similar method
-                logger.debug("ProjectManager available, but requestScan not directly accessible");
+                projectManager.requestScan();
+                logger.info("Project resource scan triggered successfully via ProjectManager for: {}", projectName);
+                return true;
+            } else {
+                logger.warn("ProjectManager not available - resource scan not triggered");
+                return false;
             }
         } catch (Exception e) {
-            logger.debug("ProjectManager approach failed: {}", e.getMessage());
+            logger.error("Failed to trigger project resource scan: {}", e.getMessage(), e);
+            return false;
         }
-
-        logger.info("Resource scan not triggered - manual refresh required in Designer (File > Update Project)");
-        return false;
     }
 
     /**

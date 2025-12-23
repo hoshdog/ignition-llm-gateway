@@ -12,11 +12,11 @@ import java.util.Set;
  */
 public class ViewConfigValidator {
 
-    // Known component types (a subset for validation)
+    // Comprehensive list of known Perspective component types for validation
     private static final Set<String> KNOWN_COMPONENT_TYPES = new HashSet<>();
 
     static {
-        // Container components
+        // ===== Container components =====
         KNOWN_COMPONENT_TYPES.add("ia.container.flex");
         KNOWN_COMPONENT_TYPES.add("ia.container.coord");
         KNOWN_COMPONENT_TYPES.add("ia.container.column");
@@ -25,17 +25,31 @@ public class ViewConfigValidator {
         KNOWN_COMPONENT_TYPES.add("ia.container.tab");
         KNOWN_COMPONENT_TYPES.add("ia.container.card");
         KNOWN_COMPONENT_TYPES.add("ia.container.breakpoint");
+        KNOWN_COMPONENT_TYPES.add("ia.container.embeddedView");
+        KNOWN_COMPONENT_TYPES.add("ia.container.flexRepeater");
+        KNOWN_COMPONENT_TYPES.add("ia.container.coordinateRepeater");
 
-        // Display components
+        // ===== Display components =====
         KNOWN_COMPONENT_TYPES.add("ia.display.label");
         KNOWN_COMPONENT_TYPES.add("ia.display.icon");
         KNOWN_COMPONENT_TYPES.add("ia.display.image");
         KNOWN_COMPONENT_TYPES.add("ia.display.markdown");
-        KNOWN_COMPONENT_TYPES.add("ia.display.gauge");
+        KNOWN_COMPONENT_TYPES.add("ia.display.barcode");
+        KNOWN_COMPONENT_TYPES.add("ia.display.cylindricaltank");
         KNOWN_COMPONENT_TYPES.add("ia.display.led-display");
+        KNOWN_COMPONENT_TYPES.add("ia.display.thermometer");
+        KNOWN_COMPONENT_TYPES.add("ia.display.sparkline");
+        KNOWN_COMPONENT_TYPES.add("ia.display.linear-scale");
         KNOWN_COMPONENT_TYPES.add("ia.display.progress-bar");
+        KNOWN_COMPONENT_TYPES.add("ia.display.view");
+        KNOWN_COMPONENT_TYPES.add("ia.display.iframe");
+        KNOWN_COMPONENT_TYPES.add("ia.display.video-player");
+        KNOWN_COMPONENT_TYPES.add("ia.display.gauge");
+        KNOWN_COMPONENT_TYPES.add("ia.display.audio-player");
+        KNOWN_COMPONENT_TYPES.add("ia.display.pdf-viewer");
+        KNOWN_COMPONENT_TYPES.add("ia.display.symbol");
 
-        // Input components
+        // ===== Input components =====
         KNOWN_COMPONENT_TYPES.add("ia.input.button");
         KNOWN_COMPONENT_TYPES.add("ia.input.text-field");
         KNOWN_COMPONENT_TYPES.add("ia.input.text-area");
@@ -45,21 +59,51 @@ public class ViewConfigValidator {
         KNOWN_COMPONENT_TYPES.add("ia.input.slider");
         KNOWN_COMPONENT_TYPES.add("ia.input.toggle-switch");
         KNOWN_COMPONENT_TYPES.add("ia.input.date-time-input");
+        KNOWN_COMPONENT_TYPES.add("ia.input.datetime-picker");
         KNOWN_COMPONENT_TYPES.add("ia.input.numeric-entry-field");
+        KNOWN_COMPONENT_TYPES.add("ia.input.password-field");
+        KNOWN_COMPONENT_TYPES.add("ia.input.file-upload");
+        KNOWN_COMPONENT_TYPES.add("ia.input.barcode-scanner-input");
+        KNOWN_COMPONENT_TYPES.add("ia.input.multistate-button");
+        KNOWN_COMPONENT_TYPES.add("ia.input.range-slider");
+        KNOWN_COMPONENT_TYPES.add("ia.input.color-picker");
 
-        // Chart components
+        // ===== Chart components =====
         KNOWN_COMPONENT_TYPES.add("ia.chart.pie");
         KNOWN_COMPONENT_TYPES.add("ia.chart.bar");
         KNOWN_COMPONENT_TYPES.add("ia.chart.xy-chart");
-        KNOWN_COMPONENT_TYPES.add("ia.chart.time-series");
+        KNOWN_COMPONENT_TYPES.add("ia.chart.time-series-chart");
+        KNOWN_COMPONENT_TYPES.add("ia.chart.power-chart");
+        KNOWN_COMPONENT_TYPES.add("ia.chart.chart-range-selector");
 
-        // Table components
+        // ===== Table components =====
         KNOWN_COMPONENT_TYPES.add("ia.table.table");
         KNOWN_COMPONENT_TYPES.add("ia.table.power-table");
 
-        // Embedding components
-        KNOWN_COMPONENT_TYPES.add("ia.display.view");
-        KNOWN_COMPONENT_TYPES.add("ia.display.iframe");
+        // ===== Navigation components =====
+        KNOWN_COMPONENT_TYPES.add("ia.navigation.tree");
+        KNOWN_COMPONENT_TYPES.add("ia.navigation.menu-tree");
+        KNOWN_COMPONENT_TYPES.add("ia.navigation.page-link");
+        KNOWN_COMPONENT_TYPES.add("ia.navigation.tab-container");
+
+        // ===== Alarm components =====
+        KNOWN_COMPONENT_TYPES.add("ia.alarm.table");
+        KNOWN_COMPONENT_TYPES.add("ia.alarm.status-table");
+        KNOWN_COMPONENT_TYPES.add("ia.alarm.journal");
+
+        // ===== Reporting =====
+        KNOWN_COMPONENT_TYPES.add("ia.report.viewer");
+
+        // ===== Map components =====
+        KNOWN_COMPONENT_TYPES.add("ia.map.map");
+        KNOWN_COMPONENT_TYPES.add("ia.map.marker");
+
+        // ===== Calendar components =====
+        KNOWN_COMPONENT_TYPES.add("ia.calendar.calendar");
+
+        // ===== Misc components =====
+        KNOWN_COMPONENT_TYPES.add("ia.misc.timer");
+        KNOWN_COMPONENT_TYPES.add("ia.misc.signature");
     }
 
     /**

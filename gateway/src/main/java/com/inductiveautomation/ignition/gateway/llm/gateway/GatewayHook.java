@@ -7,6 +7,7 @@ import com.inductiveautomation.ignition.gateway.model.GatewayContext;
 // Configuration panels would use the new ConfigCategory / ConfigPanel API
 import com.inductiveautomation.ignition.gateway.llm.common.LLMGatewayConstants;
 import com.inductiveautomation.ignition.gateway.llm.gateway.api.LLMEndpoint;
+import com.inductiveautomation.ignition.gateway.llm.gateway.api.ProjectScanServlet;
 import com.inductiveautomation.ignition.gateway.llm.gateway.audit.AuditLogger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,6 +26,11 @@ public class GatewayHook extends AbstractGatewayModuleHook {
      * Servlet mount point - the servlet will be available at /system/llm-gateway/*
      */
     private static final String SERVLET_NAME = "llm-gateway";
+
+    /**
+     * Project scan servlet mount point - available at /system/llm-gateway-scan/*
+     */
+    private static final String SCAN_SERVLET_NAME = "llm-gateway-scan";
 
     private GatewayContext gatewayContext;
     private LLMGatewayContext llmContext;
@@ -70,13 +76,21 @@ public class GatewayHook extends AbstractGatewayModuleHook {
             LLMGatewayModuleHolder.setConversationManager(llmContext.getConversationManager());
             logger.debug("LLM Gateway module holder initialized");
 
-            // Register the servlet with the Gateway's web server
+            // Register the main servlet with the Gateway's web server
             // The servlet will be available at /system/llm-gateway/*
             gatewayContext.getWebResourceManager().addServlet(
                     SERVLET_NAME,
                     LLMEndpoint.class
             );
             logger.info("LLM Gateway servlet registered at /system/{}/", SERVLET_NAME);
+
+            // Register the project scan servlet
+            // The servlet will be available at /system/llm-gateway-scan/*
+            gatewayContext.getWebResourceManager().addServlet(
+                    SCAN_SERVLET_NAME,
+                    ProjectScanServlet.class
+            );
+            logger.info("LLM Gateway project scan servlet registered at /system/{}/", SCAN_SERVLET_NAME);
 
             auditLogger.logSystemEvent(
                     "MODULE_STARTUP",
@@ -102,13 +116,19 @@ public class GatewayHook extends AbstractGatewayModuleHook {
         logger.info("LLM Gateway module shutting down...");
 
         try {
-            // Unregister the servlet from the Gateway's web server
+            // Unregister the servlets from the Gateway's web server
             if (gatewayContext != null) {
                 try {
                     gatewayContext.getWebResourceManager().removeServlet(SERVLET_NAME);
                     logger.info("LLM Gateway servlet unregistered");
                 } catch (Exception e) {
                     logger.warn("Error unregistering servlet: {}", e.getMessage());
+                }
+                try {
+                    gatewayContext.getWebResourceManager().removeServlet(SCAN_SERVLET_NAME);
+                    logger.info("LLM Gateway project scan servlet unregistered");
+                } catch (Exception e) {
+                    logger.warn("Error unregistering scan servlet: {}", e.getMessage());
                 }
             }
 

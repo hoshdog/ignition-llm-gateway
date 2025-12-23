@@ -1,6 +1,7 @@
 package com.inductiveautomation.ignition.gateway.llm.gateway.resources;
 
 import com.inductiveautomation.ignition.gateway.model.GatewayContext;
+import com.inductiveautomation.ignition.gateway.project.ProjectManager;
 import com.inductiveautomation.ignition.gateway.llm.actions.CreateResourceAction;
 import com.inductiveautomation.ignition.gateway.llm.actions.DeleteResourceAction;
 import com.inductiveautomation.ignition.gateway.llm.actions.ReadResourceAction;
@@ -538,15 +539,47 @@ public class ScriptResourceHandler implements ResourceHandler {
 
         logger.info("Created script at: {}", scriptDir);
 
+        // Trigger project resource scan for immediate visibility
+        boolean scanTriggered = triggerProjectResourceScan(scriptPath.getProjectName());
+
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("scriptPath", scriptPath.toString());
         result.put("status", "created");
         result.put("filesystemPath", scriptDir.toString());
         result.put("lineCount", countLines(code));
         result.put("timestamp", Instant.now().toString());
-        result.put("note", "Script created via filesystem. A project resource scan or Gateway restart may be needed.");
+        result.put("resourceScanTriggered", scanTriggered);
+        if (!scanTriggered) {
+            result.put("note", "Script created via filesystem. Use File > Update Project in Designer, or restart Gateway to see the script.");
+        } else {
+            result.put("note", "Script created. Use File > Update Project in Designer to see it immediately.");
+        }
 
         return result;
+    }
+
+    /**
+     * Triggers a project resource scan using the official ProjectManager API.
+     * This causes the Gateway to detect file-based resource changes.
+     *
+     * @param projectName The project to scan (currently unused, but kept for API compatibility)
+     * @return true if scan was triggered successfully, false otherwise
+     */
+    private boolean triggerProjectResourceScan(String projectName) {
+        try {
+            ProjectManager projectManager = gatewayContext.getProjectManager();
+            if (projectManager != null) {
+                projectManager.requestScan();
+                logger.info("Project resource scan triggered successfully via ProjectManager for: {}", projectName);
+                return true;
+            } else {
+                logger.warn("ProjectManager not available - resource scan not triggered");
+                return false;
+            }
+        } catch (Exception e) {
+            logger.error("Failed to trigger project resource scan: {}", e.getMessage(), e);
+            return false;
+        }
     }
 
     /**
