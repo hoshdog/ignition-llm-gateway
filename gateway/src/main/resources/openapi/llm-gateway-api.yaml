@@ -1,0 +1,485 @@
+openapi: 3.0.3
+info:
+  title: Ignition LLM Gateway API
+  description: |
+    API for LLM-powered management of Ignition Gateway resources.
+
+    ## Authentication
+    All endpoints (except /health) require authentication via API key:
+    - Header: `Authorization: Bearer llmgw_xxxxx`
+    - Header: `X-API-Key: llmgw_xxxxx`
+
+    ## Rate Limiting
+    Requests are rate-limited per API key. Check response headers:
+    - `X-RateLimit-Remaining-Requests`
+    - `X-RateLimit-Remaining-Tokens`
+    - `Retry-After` (on 429 responses)
+
+    ## Supported Resource Types
+    - `tag` - Tag operations (read, write, create, delete)
+    - `view` - Perspective view operations
+    - `script` - Project script operations
+    - `named-query` - Named query operations
+    - `project` - Project metadata operations
+
+  version: 1.0.0
+  contact:
+    name: LLM Gateway Module
+
+servers:
+  - url: /system/llm-gateway/api/v1
+    description: Gateway API endpoint
+
+security:
+  - BearerAuth: []
+  - ApiKeyHeader: []
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      description: Check if the module is running and LLM providers are available
+      operationId: healthCheck
+      security: []
+      responses:
+        '200':
+          description: Module is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /info:
+    get:
+      summary: Module info (authenticated)
+      description: Get module information including supported resources and user permissions
+      operationId: getInfo
+      responses:
+        '200':
+          description: Module info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InfoResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /chat:
+    post:
+      summary: Send a message to the LLM
+      description: |
+        Send a natural language message. The LLM will interpret the request
+        and may invoke tools to manage Ignition resources.
+      operationId: chat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+            examples:
+              createTag:
+                summary: Create a tag
+                value:
+                  message: "Create a memory tag called Temperature in the Sensors folder with Float4 type"
+              readView:
+                summary: Read a view
+                value:
+                  conversationId: "abc-123"
+                  message: "Show me the MainScreen view in the HMI project"
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          description: LLM provider error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /chat/stream:
+    post:
+      summary: Send a message with streaming response
+      description: |
+        Same as /chat but returns Server-Sent Events for real-time streaming.
+
+        ## Event Types
+        - `conversation_id` - Conversation ID (sent immediately)
+        - `token` - Text token from LLM
+        - `tool_call_start` - Tool execution started
+        - `tool_call_complete` - Tool execution finished
+        - `complete` - Full response complete
+        - `error` - Error occurred
+        - `done` - Stream ended
+      operationId: chatStream
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              examples:
+                stream:
+                  value: |
+                    event: conversation_id
+                    data: {"id": "abc-123"}
+
+                    event: token
+                    data: Hello
+
+                    event: token
+                    data: , how can I help?
+
+                    event: complete
+                    data: {"conversationId": "abc-123"}
+
+                    event: done
+                    data: {}
+
+  /chat/end:
+    post:
+      summary: End a conversation
+      description: Ends a conversation and releases its memory
+      operationId: endConversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EndConversationRequest'
+      responses:
+        '200':
+          description: Conversation ended
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  conversationId:
+                    type: string
+                  status:
+                    type: string
+                    example: ended
+
+  /action:
+    post:
+      summary: Execute a direct action
+      description: |
+        Execute a typed action directly without LLM interpretation.
+        Useful for programmatic integrations.
+      operationId: executeAction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActionRequest'
+            examples:
+              createTag:
+                summary: Create tag action
+                value:
+                  actionType: create
+                  resourceType: tag
+                  resourcePath: "[default]Sensors/Temperature"
+                  payload:
+                    tagType: AtomicTag
+                    dataType: Float4
+                    value: 0.0
+                  options:
+                    dryRun: true
+              readTags:
+                summary: Read tags
+                value:
+                  actionType: read
+                  resourceType: tag
+                  resourcePath: "[default]Sensors/*"
+      responses:
+        '200':
+          description: Action executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionResult'
+        '400':
+          description: Invalid request or validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionResult'
+
+  /openapi.yaml:
+    get:
+      summary: Get OpenAPI specification (YAML)
+      description: Returns this OpenAPI specification in YAML format
+      operationId: getOpenApiYaml
+      security: []
+      responses:
+        '200':
+          description: OpenAPI specification
+          content:
+            text/yaml:
+              schema:
+                type: string
+
+  /openapi.json:
+    get:
+      summary: Get OpenAPI specification (JSON)
+      description: Returns this OpenAPI specification in JSON format
+      operationId: getOpenApiJson
+      security: []
+      responses:
+        '200':
+          description: OpenAPI specification
+          content:
+            application/json:
+              schema:
+                type: object
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: API key as Bearer token
+    ApiKeyHeader:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key in custom header
+
+  schemas:
+    ChatRequest:
+      type: object
+      required:
+        - message
+      properties:
+        conversationId:
+          type: string
+          description: Optional conversation ID for multi-turn conversations
+        message:
+          type: string
+          description: Natural language message
+          example: "Create a tag called Temperature with Float4 type"
+
+    ChatResponse:
+      type: object
+      properties:
+        conversationId:
+          type: string
+        correlationId:
+          type: string
+        message:
+          type: string
+          description: LLM's response message
+        actionResults:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActionResult'
+        timestamp:
+          type: string
+          format: date-time
+
+    EndConversationRequest:
+      type: object
+      required:
+        - conversationId
+      properties:
+        conversationId:
+          type: string
+
+    ActionRequest:
+      type: object
+      required:
+        - actionType
+        - resourceType
+        - resourcePath
+      properties:
+        correlationId:
+          type: string
+          description: Optional correlation ID for tracking
+        actionType:
+          type: string
+          enum: [create, read, update, delete]
+        resourceType:
+          type: string
+          enum: [tag, view, script, named-query, project]
+        resourcePath:
+          type: string
+          description: Path to the resource
+          example: "[default]Sensors/Temperature"
+        payload:
+          type: object
+          description: Action-specific data
+        options:
+          $ref: '#/components/schemas/ActionOptions'
+
+    ActionOptions:
+      type: object
+      properties:
+        dryRun:
+          type: boolean
+          default: false
+          description: Preview changes without applying
+        force:
+          type: boolean
+          default: false
+          description: Force destructive operations
+        recursive:
+          type: boolean
+          default: false
+          description: Apply recursively to children
+        comment:
+          type: string
+          description: Comment for audit log
+
+    ActionResult:
+      type: object
+      properties:
+        correlationId:
+          type: string
+        status:
+          type: string
+          enum: [SUCCESS, FAILURE, PARTIAL, PENDING_CONFIRMATION, DRY_RUN]
+        message:
+          type: string
+        data:
+          type: object
+        warnings:
+          type: array
+          items:
+            type: string
+        errors:
+          type: array
+          items:
+            type: string
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+        module:
+          type: string
+        version:
+          type: string
+        environmentMode:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    InfoResponse:
+      type: object
+      properties:
+        module:
+          type: string
+        version:
+          type: string
+        environmentMode:
+          type: string
+        supportedResourceTypes:
+          type: array
+          items:
+            type: string
+        user:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        correlationId:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+  responses:
+    Unauthorized:
+      description: Authentication failed
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: "Authentication failed"
+              message:
+                type: string
+              reason:
+                type: string
+              correlationId:
+                type: string
+
+    Forbidden:
+      description: Permission denied
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: "Authorization denied"
+              message:
+                type: string
+                example: "Missing permission: TAG_CREATE"
+              correlationId:
+                type: string
+              requiredPermission:
+                type: string
+
+    RateLimited:
+      description: Rate limit exceeded
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds until rate limit resets
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: "Rate limit exceeded"
+              retryAfter:
+                type: integer

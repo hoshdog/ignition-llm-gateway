@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(ignition-gateway-pro)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:api.github.com)",
+      "Bash(mvn clean compile:*)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(powershell:*)",
+      "Bash(powershell: -Command \"New-Item -ItemType Directory -Force -Path ''C:\\\\Users\\\\HoshitoPowell\\\\Desktop\\\\Ignition Gateway LLM Module\\\\gateway\\\\src\\\\test\\\\java\\\\com\\\\inductiveautomation\\\\ignition\\\\gateway\\\\llm\\\\gateway\\\\auth'',''C:\\\\Users\\\\HoshitoPowell\\\\Desktop\\\\Ignition Gateway LLM Module\\\\gateway\\\\src\\\\test\\\\java\\\\com\\\\inductiveautomation\\\\ignition\\\\gateway\\\\llm\\\\gateway\\\\resources'',''C:\\\\Users\\\\HoshitoPowell\\\\Desktop\\\\Ignition Gateway LLM Module\\\\gateway\\\\src\\\\test\\\\java\\\\com\\\\inductiveautomation\\\\ignition\\\\gateway\\\\llm\\\\gateway\\\\validators''\")",
+      "Bash(mvn clean test:*)",
+      "Bash(mvn test:*)",
+      "Bash(mvn clean install:*)",
+      "Bash(mvn clean package:*)",
+      "WebSearch",
+      "WebFetch(domain:files.inductiveautomation.com)",
+      "Bash(jar tf:*)",
+      "Bash(jar xf:*)",
+      "Bash(cat:*)",
+      "Bash(mvn package:*)",
+      "Bash(unzip:*)",
+      "Bash(del \"C:\\\\Users\\\\HoshitoPowell\\\\Desktop\\\\Ignition Gateway LLM Module\\\\maven_debug.log\")",
+      "Bash(curl:*)",
+      "WebFetch(domain:www.sdk-docs.inductiveautomation.com)",
+      "WebFetch(domain:forum.inductiveautomation.com)",
+      "Bash(copy \"C:\\\\Users\\\\HoshitoPowell\\\\Desktop\\\\Ignition Gateway LLM Module\\\\build\\\\target\\\\LLM-Gateway-unsigned.modl\" \"C:\\\\Program Files\\\\Inductive Automation\\\\Ignition\\\\user-lib\\\\modules\" /Y)",
+      "Bash(copy \"C:\\Users\\HoshitoPowell\\Desktop\\Ignition Gateway LLM Module\\build\\target\\LLM-Gateway-unsigned.modl\" \"C:\\Program Files\\Inductive Automation\\Ignition\\user-lib\\modules\" /Y)",
+      "Bash(copy \"C:\\\\Users\\\\HoshitoPowell\\\\Desktop\\\\Ignition Gateway LLM Module\\\\build\\\\target\\\\LLM-Gateway-unsigned.modl\" \"C:\\\\Program Files\\\\Inductive Automation\\\\Ignition\\\\user-lib\\\\modules\" /Y)",
+      "Bash(time curl:*)",
+      "Bash(powershell: -Command \"if \\(Test-Path \"\"$env:APPDATA\\\\Claude\"\"\\) { Get-ChildItem \"\"$env:APPDATA\\\\Claude\"\" } else { Write-Host ''Claude config directory does not exist yet - Claude Desktop may not be installed or run yet'' }\")",
+      "Bash(timeout 3 node:*)",
+      "Bash(IGNITION_GATEWAY_URL=\"http://localhost:8089\" IGNITION_API_KEY=\"llmgw_KNp3DcEsfxsV3tBF6xMPn26fSmH5yCcHlKk82yHXyAQ\" timeout 3 node:*)",
+      "Bash(git init:*)",
+      "Bash(gh auth:*)",
+      "Bash(git add:*)",
+      "Bash(git reset:*)"
+    ]
+  }
+}

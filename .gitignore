@@ -1,0 +1,66 @@
+# Node modules
+node_modules/
+**/node_modules/
+
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Ignition Module
+*.modl
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Build artifacts
+build/target/
+common/target/
+gateway/target/
+
+# LLM state (ephemeral)
+.llm/
+
+# Environment files
+.env
+.env.local
+*.env
+
+# Credentials
+credentials.json
+secrets.json
+
+# Windows reserved names
+nul
+NUL
+con
+CON
+aux
+AUX
+prn
+PRN

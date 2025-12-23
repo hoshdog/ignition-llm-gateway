@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "ignition-gateway": {
+      "command": "node",
+      "args": [
+        "C:\\Users\\HoshitoPowell\\Desktop\\Ignition Gateway LLM Module\\ignition-mcp-server\\build\\index.js"
+      ],
+      "env": {
+        "IGNITION_GATEWAY_URL": "http://localhost:8089",
+        "IGNITION_API_KEY": "llmgw_KNp3DcEsfxsV3tBF6xMPn26fSmH5yCcHlKk82yHXyAQ"
+      }
+    }
+  }
+}

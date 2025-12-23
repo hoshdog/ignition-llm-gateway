@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.inductiveautomation.ignition.gateway</groupId>
+        <artifactId>llm-gateway</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>llm-gateway-build</artifactId>
+    <packaging>pom</packaging>
+
+    <name>LLM Gateway - Build</name>
+    <description>Build module for creating the Ignition .modl file</description>
+
+    <dependencies>
+        <!-- Include all module artifacts -->
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>llm-gateway-common</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>llm-gateway-gateway</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>com.inductiveautomation.ignitionsdk</groupId>
+                <artifactId>ignition-maven-plugin</artifactId>
+                <version>${ignition-maven-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>build-module</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>modl</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <!-- Module Identity -->
+                    <moduleId>${module-id}</moduleId>
+                    <moduleName>${module-name}</moduleName>
+                    <moduleDescription>${module-description}</moduleDescription>
+                    <moduleVersion>${project.version}</moduleVersion>
+
+                    <!-- Ignition Version Requirements -->
+                    <requiredIgnitionVersion>${ignition-platform-version}</requiredIgnitionVersion>
+                    <requiredFrameworkVersion>8</requiredFrameworkVersion>
+
+                    <!-- Module Dependencies (none for now) -->
+                    <depends>
+                        <!-- Uncomment if depending on other modules -->
+                        <!--
+                        <depend>
+                            <scope>G</scope>
+                            <moduleId>com.inductiveautomation.perspective</moduleId>
+                        </depend>
+                        -->
+                    </depends>
+
+                    <!-- Project Scopes Configuration -->
+                    <!-- NOTE: The <name> must match the <name> element in each submodule's pom.xml -->
+                    <projectScopes>
+                        <!-- Common module - available in Gateway scope -->
+                        <projectScope>
+                            <name>LLM Gateway - Common</name>
+                            <scope>G</scope>
+                        </projectScope>
+
+                        <!-- Gateway module - Gateway scope only -->
+                        <projectScope>
+                            <name>LLM Gateway - Gateway Scope</name>
+                            <scope>G</scope>
+                        </projectScope>
+                    </projectScopes>
+
+                    <!-- Hook Registrations -->
+                    <hooks>
+                        <hook>
+                            <scope>G</scope>
+                            <hookClass>com.inductiveautomation.ignition.gateway.llm.gateway.GatewayHook</hookClass>
+                        </hook>
+                    </hooks>
+
+                    <!-- Free module (no license required) -->
+                    <freeModule>true</freeModule>
+
+                    <!-- License file (if not free) -->
+                    <!--<licenseFile>${project.basedir}/license.html</licenseFile>-->
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <!-- Profile for signed production builds -->
+        <profile>
+            <id>signed</id>
+            <properties>
+                <!-- These should be set in settings.xml or on command line -->
+                <!-- mvn package -Psigned -Dsigning.keystore.path=/path/to/keystore.jks -->
+                <!-- mvn package -Psigned -Dsigning.keystore.password=password -->
+                <!-- mvn package -Psigned -Dsigning.alias=your-alias -->
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>com.inductiveautomation.ignitionsdk</groupId>
+                        <artifactId>ignition-maven-plugin</artifactId>
+                        <version>${ignition-maven-plugin.version}</version>
+                        <configuration>
+                            <!-- Signing Configuration -->
+                            <signModule>true</signModule>
+                            <keystore>${signing.keystore.path}</keystore>
+                            <keystorePassword>${signing.keystore.password}</keystorePassword>
+                            <alias>${signing.alias}</alias>
+                            <aliasPassword>${signing.alias.password}</aliasPassword>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- Profile for development builds (unsigned) -->
+        <profile>
+            <id>dev</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <properties>
+                <skip.tests>false</skip.tests>
+            </properties>
+        </profile>
+
+        <!-- Profile for quick builds (skip tests) -->
+        <profile>
+            <id>quick</id>
+            <properties>
+                <maven.test.skip>true</maven.test.skip>
+            </properties>
+        </profile>
+    </profiles>
+</project>
