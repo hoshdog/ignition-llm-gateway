@@ -439,6 +439,7 @@ public class TagResourceHandler implements ResourceHandler {
 
     /**
      * Checks if a tag has children (is a folder with contents).
+     * Only folder-type tags can have children.
      */
     private boolean hasChildren(String tagPathStr) {
         try {
@@ -449,6 +450,24 @@ public class TagResourceHandler implements ResourceHandler {
                 return false;
             }
 
+            // First check if this is a folder - only folders can have children
+            List<TagConfigurationModel> configs = provider.getTagConfigsAsync(
+                    java.util.Arrays.asList(parsed.tagPath), false, true
+            ).get(10, TimeUnit.SECONDS);
+
+            if (configs.isEmpty()) {
+                return false;
+            }
+
+            TagConfigurationModel tagConfig = configs.get(0);
+            TagObjectType tagType = tagConfig.getType();
+
+            // Only Folder type tags can have children
+            if (tagType != TagObjectType.Folder) {
+                return false;
+            }
+
+            // Now browse for children
             TagPath browsePath = parsed.tagPath;
             Results<NodeDescription> results = provider.browseAsync(
                     browsePath, null

@@ -626,9 +626,10 @@ public class ActionParser {
     private static ActionOptions parseOptions(JsonNode args) {
         boolean dryRun = args.has("dryRun") && args.get("dryRun").asBoolean(false);
         boolean force = args.has("force") && args.get("force").asBoolean(false);
+        boolean recursive = args.has("recursive") && args.get("recursive").asBoolean(false);
         String comment = args.has("comment") ? args.get("comment").asText() : null;
 
-        return new ActionOptions(dryRun, force, comment);
+        return new ActionOptions(dryRun, force, recursive, comment);
     }
 
     private static String getRequiredString(JsonNode args, String field) throws ParseException {

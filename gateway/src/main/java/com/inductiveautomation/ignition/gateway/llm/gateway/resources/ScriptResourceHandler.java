@@ -516,9 +516,9 @@ public class ScriptResourceHandler implements ResourceHandler {
         Files.writeString(codeFile, code, StandardCharsets.UTF_8);
 
         // Write resource.json (metadata) with proper lastModification
-        // Scope "A" (All) is required for Designer visibility
+        // Scope "G" (Gateway) matches Designer-created resources
         Map<String, Object> resourceMeta = new LinkedHashMap<>();
-        resourceMeta.put("scope", "A");  // "A" = All (Gateway + Designer + Client) - REQUIRED for Designer visibility
+        resourceMeta.put("scope", "G");  // "G" = Gateway - matches Designer-created resources
         resourceMeta.put("version", 1);
         resourceMeta.put("restricted", false);
         resourceMeta.put("overridable", true);

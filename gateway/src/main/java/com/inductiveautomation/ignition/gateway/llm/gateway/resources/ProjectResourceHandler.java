@@ -1,5 +1,6 @@
 package com.inductiveautomation.ignition.gateway.llm.gateway.resources;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.inductiveautomation.ignition.gateway.model.GatewayContext;
 import com.inductiveautomation.ignition.gateway.llm.actions.CreateResourceAction;
 import com.inductiveautomation.ignition.gateway.llm.actions.DeleteResourceAction;
@@ -12,6 +13,10 @@ import com.inductiveautomation.ignition.gateway.llm.gateway.auth.Permission;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -20,6 +25,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Stream;
 
 /**
  * Resource handler for Ignition Projects.
@@ -34,6 +40,7 @@ public class ProjectResourceHandler implements ResourceHandler {
 
     private final GatewayContext gatewayContext;
     private final AuditLogger auditLogger;
+    private final ObjectMapper objectMapper;
 
     // Fields that can be updated via LLM
     private static final Set<String> ALLOWED_UPDATE_FIELDS = new HashSet<>(Arrays.asList(
@@ -45,6 +52,7 @@ public class ProjectResourceHandler implements ResourceHandler {
     public ProjectResourceHandler(GatewayContext gatewayContext, AuditLogger auditLogger) {
         this.gatewayContext = gatewayContext;
         this.auditLogger = auditLogger;
+        this.objectMapper = new ObjectMapper();
     }
 
     @Override
@@ -244,35 +252,79 @@ public class ProjectResourceHandler implements ResourceHandler {
 
     // ===== Internal helper methods =====
 
-    private boolean projectExists(String projectName) {
-        // Placeholder implementation
-        logger.debug("Checking if project exists: {}", projectName);
-        return true;
+    /**
+     * Gets the path to the projects directory.
+     */
+    private Path getProjectsDirectory() {
+        Path dataDir = gatewayContext.getSystemManager().getDataDir().toPath();
+        return dataDir.resolve("projects");
     }
 
+    /**
+     * Gets the path to a specific project directory.
+     */
+    private Path getProjectDirectory(String projectName) {
+        return getProjectsDirectory().resolve(projectName);
+    }
+
+    /**
+     * Checks if a project exists on the filesystem.
+     */
+    private boolean projectExists(String projectName) {
+        Path projectDir = getProjectDirectory(projectName);
+        Path projectJson = projectDir.resolve("project.json");
+        boolean exists = Files.exists(projectDir) && Files.isDirectory(projectDir) && Files.exists(projectJson);
+        logger.debug("Checking if project exists: {} -> {}", projectName, exists);
+        return exists;
+    }
+
+    /**
+     * Reads a project's metadata from project.json.
+     */
+    @SuppressWarnings("unchecked")
     private Map<String, Object> readProjectInternal(String projectName) {
-        // Placeholder implementation
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("name", projectName);
-        result.put("title", projectName + " Project");
-        result.put("description", "An Ignition project");
-        result.put("enabled", true);
-        result.put("inheritable", false);
-        result.put("parentProject", null);
 
-        // Resource counts
-        Map<String, Integer> resourceCounts = new LinkedHashMap<>();
-        resourceCounts.put("views", 0);
-        resourceCounts.put("scripts", 0);
-        resourceCounts.put("namedQueries", 0);
-        result.put("resourceCounts", resourceCounts);
+        Path projectDir = getProjectDirectory(projectName);
+        Path projectJson = projectDir.resolve("project.json");
+
+        try {
+            if (Files.exists(projectJson)) {
+                String content = Files.readString(projectJson, StandardCharsets.UTF_8);
+                Map<String, Object> projectMeta = objectMapper.readValue(content, Map.class);
+
+                result.put("title", projectMeta.getOrDefault("title", projectName));
+                result.put("description", projectMeta.getOrDefault("description", ""));
+                result.put("enabled", projectMeta.getOrDefault("enabled", true));
+                result.put("inheritable", projectMeta.getOrDefault("inheritable", false));
+                result.put("parentProject", projectMeta.get("parent"));
+            } else {
+                // Fallback if project.json not readable
+                result.put("title", projectName);
+                result.put("description", "");
+                result.put("enabled", true);
+                result.put("inheritable", false);
+                result.put("parentProject", null);
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to read project.json for {}: {}", projectName, e.getMessage());
+            result.put("title", projectName);
+            result.put("description", "");
+            result.put("enabled", true);
+            result.put("inheritable", false);
+            result.put("parentProject", null);
+        }
+
+        // Add resource counts
+        result.put("resourceCounts", getProjectResourceCounts(projectName));
 
         return result;
     }
 
     private Map<String, Object> updateProjectInternal(String projectName,
                                                        Map<String, Object> updates) {
-        // Placeholder implementation
+        // Placeholder implementation - actual update would modify project.json
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("projectName", projectName);
         result.put("status", "updated");
@@ -313,29 +365,139 @@ public class ProjectResourceHandler implements ResourceHandler {
         }
     }
 
+    /**
+     * Lists all projects by scanning the projects directory on disk.
+     * Returns actual project names (folder names) with metadata from project.json.
+     */
+    @SuppressWarnings("unchecked")
     private List<Map<String, Object>> listProjectsInternal(boolean includeDisabled) {
-        // Placeholder implementation
         List<Map<String, Object>> projects = new ArrayList<>();
 
-        // Add a sample project
-        Map<String, Object> project1 = new LinkedHashMap<>();
-        project1.put("name", "MainProject");
-        project1.put("title", "Main Project");
-        project1.put("enabled", true);
-        project1.put("parent", null);
-        projects.add(project1);
+        try {
+            Path projectsDir = getProjectsDirectory();
+
+            if (!Files.exists(projectsDir)) {
+                logger.warn("Projects directory not found: {}", projectsDir);
+                return projects;
+            }
+
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(projectsDir)) {
+                for (Path projectDir : stream) {
+                    if (!Files.isDirectory(projectDir)) {
+                        continue;
+                    }
+
+                    String projectName = projectDir.getFileName().toString();
+                    Path projectJson = projectDir.resolve("project.json");
+
+                    if (!Files.exists(projectJson)) {
+                        logger.debug("Skipping directory without project.json: {}", projectName);
+                        continue;
+                    }
+
+                    try {
+                        String content = Files.readString(projectJson, StandardCharsets.UTF_8);
+                        Map<String, Object> projectMeta = objectMapper.readValue(content, Map.class);
+
+                        boolean enabled = Boolean.TRUE.equals(projectMeta.getOrDefault("enabled", true));
+                        if (!includeDisabled && !enabled) {
+                            logger.debug("Skipping disabled project: {}", projectName);
+                            continue;
+                        }
+
+                        Map<String, Object> projectInfo = new LinkedHashMap<>();
+                        projectInfo.put("name", projectName);  // Folder name is the identifier
+                        projectInfo.put("title", projectMeta.getOrDefault("title", projectName));
+                        projectInfo.put("enabled", enabled);
+                        projectInfo.put("parent", projectMeta.get("parent"));
+
+                        projects.add(projectInfo);
+
+                        logger.debug("Found project: {} (title: {})", projectName, projectMeta.get("title"));
+
+                    } catch (Exception e) {
+                        logger.warn("Failed to read project.json for {}: {}", projectName, e.getMessage());
+                    }
+                }
+            }
+
+            logger.info("Listed {} projects from filesystem", projects.size());
+
+        } catch (Exception e) {
+            logger.error("Failed to list projects from filesystem", e);
+        }
 
         return projects;
     }
 
+    /**
+     * Counts resources within a project by scanning the filesystem.
+     */
     private Map<String, Integer> getProjectResourceCounts(String projectName) {
-        // Placeholder implementation
         Map<String, Integer> counts = new LinkedHashMap<>();
-        counts.put("views", 0);
-        counts.put("scripts", 0);
-        counts.put("namedQueries", 0);
-        counts.put("alarmPipelines", 0);
-        counts.put("total", 0);
+
+        try {
+            Path projectDir = getProjectDirectory(projectName);
+
+            if (!Files.exists(projectDir)) {
+                counts.put("views", 0);
+                counts.put("scripts", 0);
+                counts.put("namedQueries", 0);
+                counts.put("total", 0);
+                return counts;
+            }
+
+            // Count views (com.inductiveautomation.perspective/views/**/view.json)
+            Path viewsDir = projectDir.resolve("com.inductiveautomation.perspective").resolve("views");
+            int viewCount = countResourceFiles(viewsDir, "view.json");
+            counts.put("views", viewCount);
+
+            // Count scripts (ignition/script-python/**/code.py)
+            Path scriptsDir = projectDir.resolve("ignition").resolve("script-python");
+            int scriptCount = countResourceFiles(scriptsDir, "code.py");
+            counts.put("scripts", scriptCount);
+
+            // Count named queries (ignition/named-query/**/query.json or query.sql)
+            Path queriesDir = projectDir.resolve("ignition").resolve("named-query");
+            int queryCount = countResourceFiles(queriesDir, "query.json");
+            if (queryCount == 0) {
+                // Fallback to counting query.sql if query.json not found
+                queryCount = countResourceFiles(queriesDir, "query.sql");
+            }
+            counts.put("namedQueries", queryCount);
+
+            counts.put("total", viewCount + scriptCount + queryCount);
+
+            logger.debug("Resource counts for {}: views={}, scripts={}, queries={}",
+                    projectName, viewCount, scriptCount, queryCount);
+
+        } catch (Exception e) {
+            logger.debug("Failed to count resources for {}: {}", projectName, e.getMessage());
+            counts.put("views", 0);
+            counts.put("scripts", 0);
+            counts.put("namedQueries", 0);
+            counts.put("total", 0);
+        }
+
         return counts;
+    }
+
+    /**
+     * Counts files with a specific name within a directory tree.
+     */
+    private int countResourceFiles(Path directory, String filename) {
+        if (!Files.exists(directory)) {
+            return 0;
+        }
+
+        try (Stream<Path> paths = Files.walk(directory)) {
+            return (int) paths
+                    .filter(Files::isRegularFile)
+                    .filter(p -> p.getFileName().toString().equals(filename))
+                    .count();
+        } catch (Exception e) {
+            logger.debug("Error counting {} files in {}: {}", filename, directory, e.getMessage());
+            return 0;
+        }
     }
 }

@@ -10,11 +10,17 @@ import com.inductiveautomation.ignition.gateway.llm.gateway.audit.AuditLogger;
 import com.inductiveautomation.ignition.gateway.llm.gateway.auth.AuthContext;
 import com.inductiveautomation.ignition.gateway.llm.gateway.auth.Permission;
 import com.inductiveautomation.ignition.gateway.model.GatewayContext;
+import com.inductiveautomation.ignition.gateway.system.SystemManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -24,14 +30,21 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 /**
  * Unit tests for ProjectResourceHandler.
  */
 class ProjectResourceHandlerTest {
 
+    @TempDir
+    Path tempDir;
+
     @Mock
     private GatewayContext gatewayContext;
+
+    @Mock
+    private SystemManager systemManager;
 
     @Mock
     private AuditLogger auditLogger;
@@ -43,8 +56,24 @@ class ProjectResourceHandlerTest {
     private AuthContext noAccessAuth;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         MockitoAnnotations.openMocks(this);
+
+        // Set up mock to return temp directory as data dir
+        when(gatewayContext.getSystemManager()).thenReturn(systemManager);
+        when(systemManager.getDataDir()).thenReturn(tempDir.toFile());
+
+        // Create a test project in the temp directory
+        Path projectsDir = tempDir.resolve("projects");
+        Files.createDirectories(projectsDir);
+
+        Path mainProjectDir = projectsDir.resolve("MainProject");
+        Files.createDirectories(mainProjectDir);
+
+        // Create project.json for MainProject
+        String projectJson = "{\"title\":\"Main Project\",\"enabled\":true,\"inheritable\":false}";
+        Files.writeString(mainProjectDir.resolve("project.json"), projectJson, StandardCharsets.UTF_8);
+
         handler = new ProjectResourceHandler(gatewayContext, auditLogger);
 
         // Admin context
@@ -139,6 +168,20 @@ class ProjectResourceHandlerTest {
     }
 
     @Test
+    void testRead_projectNotFound() {
+        ReadResourceAction action = new ReadResourceAction(
+                UUID.randomUUID().toString(),
+                "project",
+                "NonExistentProject",
+                null, false, null, ActionOptions.defaults()
+        );
+
+        ActionResult result = handler.read(action, readOnlyAuth);
+        assertEquals(ActionResult.Status.FAILURE, result.getStatus());
+        assertTrue(result.getErrors().stream().anyMatch(e -> e.contains("NOT_FOUND")));
+    }
+
+    @Test
     void testRead_listAllProjects() {
         ReadResourceAction action = new ReadResourceAction(
                 UUID.randomUUID().toString(),
@@ -150,6 +193,10 @@ class ProjectResourceHandlerTest {
         ActionResult result = handler.read(action, readOnlyAuth);
         assertEquals(ActionResult.Status.SUCCESS, result.getStatus());
         assertNotNull(result.getData());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) result.getData();
+        assertEquals(1, data.get("count")); // Only MainProject exists
     }
 
     @Test
@@ -366,6 +413,25 @@ class ProjectResourceHandlerTest {
         assertEquals(ActionResult.Status.SUCCESS, result.getStatus());
     }
 
+    @Test
+    void testUpdate_projectNotFound() {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("title", "Updated Title");
+
+        UpdateResourceAction action = new UpdateResourceAction(
+                UUID.randomUUID().toString(),
+                "project",
+                "NonExistentProject",
+                payload,
+                true,
+                ActionOptions.defaults()
+        );
+
+        ActionResult result = handler.update(action, updateAuth);
+        assertEquals(ActionResult.Status.FAILURE, result.getStatus());
+        assertTrue(result.getErrors().stream().anyMatch(e -> e.contains("NOT_FOUND")));
+    }
+
     // ========== Delete Tests - Project deletion is disabled ==========
 
     @Test
@@ -414,6 +480,21 @@ class ProjectResourceHandlerTest {
         assertTrue(result.getMessage().contains("safety"));
     }
 
+    @Test
+    void testDelete_projectNotFound() {
+        DeleteResourceAction action = new DeleteResourceAction(
+                UUID.randomUUID().toString(),
+                "project",
+                "NonExistentProject",
+                false,
+                ActionOptions.defaults()
+        );
+
+        ActionResult result = handler.delete(action, adminAuth);
+        assertEquals(ActionResult.Status.FAILURE, result.getStatus());
+        assertTrue(result.getErrors().stream().anyMatch(e -> e.contains("NOT_FOUND")));
+    }
+
     // ========== Edge Cases ==========
 
     @Test
@@ -451,5 +532,35 @@ class ProjectResourceHandlerTest {
         assertNotNull(data);
         assertTrue(data.containsKey("count"));
         assertTrue(data.containsKey("projects"));
+    }
+
+    @Test
+    void testRead_projectMetadataFromProjectJson() throws Exception {
+        // Create a project with specific metadata
+        Path projectsDir = tempDir.resolve("projects");
+        Path testProjectDir = projectsDir.resolve("TestProject");
+        Files.createDirectories(testProjectDir);
+
+        String projectJson = "{\"title\":\"Test Project Title\",\"description\":\"A test project\",\"enabled\":true,\"inheritable\":true,\"parent\":\"MainProject\"}";
+        Files.writeString(testProjectDir.resolve("project.json"), projectJson, StandardCharsets.UTF_8);
+
+        ReadResourceAction action = new ReadResourceAction(
+                UUID.randomUUID().toString(),
+                "project",
+                "TestProject",
+                null, false, null, ActionOptions.defaults()
+        );
+
+        ActionResult result = handler.read(action, readOnlyAuth);
+        assertEquals(ActionResult.Status.SUCCESS, result.getStatus());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) result.getData();
+        assertEquals("TestProject", data.get("name"));
+        assertEquals("Test Project Title", data.get("title"));
+        assertEquals("A test project", data.get("description"));
+        assertEquals(true, data.get("enabled"));
+        assertEquals(true, data.get("inheritable"));
+        assertEquals("MainProject", data.get("parentProject"));
     }
 }

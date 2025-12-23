@@ -669,11 +669,11 @@ public class ViewResourceHandler implements ResourceHandler {
 
     /**
      * Creates a complete resource.json structure for Perspective views.
-     * Scope "A" (All) is required for Designer to see the view.
+     * Scope "G" (Gateway) is used to match Designer-created resources.
      */
     private Map<String, Object> createResourceJson() {
         Map<String, Object> resource = new LinkedHashMap<>();
-        resource.put("scope", "A");  // "A" = All (Gateway + Designer + Client) - REQUIRED for Designer visibility
+        resource.put("scope", "G");  // "G" = Gateway - matches Designer-created resources
         resource.put("version", 1);
         resource.put("restricted", false);
         resource.put("overridable", true);
